@@ -1,0 +1,13 @@
+dist
+.tsbuild
+storybook-static
+playwright-report
+test-results
+coverage
+.turbo
+pnpm-lock.yaml
+CHANGELOG.md
+
+# Prose documentation uses deliberate manual formatting (short paragraphs,
+# spacing for readability) that a markdown formatter would reflow unhelpfully.
+*.md

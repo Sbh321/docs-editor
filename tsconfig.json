@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/docs-editor-core" },
+    { "path": "packages/docs-editor-react" },
+    { "path": "apps/playground-react" },
+    { "path": "examples/basic-react" }
+  ]
+}

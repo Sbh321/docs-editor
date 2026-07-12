@@ -1,0 +1,10 @@
+{
+  "extends": "@docs-editor/typescript-config/vite-app.json",
+  "compilerOptions": {
+    "outDir": "./.tsbuild",
+    "tsBuildInfoFile": "./.tsbuild/tsconfig.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": ["dist", ".tsbuild", "node_modules"],
+  "references": [{ "path": "../../packages/docs-editor-react" }]
+}

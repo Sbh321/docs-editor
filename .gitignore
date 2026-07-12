@@ -1,0 +1,37 @@
+node_modules/
+
+# Build outputs
+dist/
+.tsbuild/
+*.tsbuildinfo
+storybook-static/
+playwright-report/
+test-results/
+coverage/
+
+# Turbo
+.turbo/
+
+# Vite
+.vite/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Changesets (keep the folder, ignore nothing extra — config below is intentional)
