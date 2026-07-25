@@ -1,13 +1,16 @@
 import { EditorView } from "@sbh321/docs-editor-core";
-import { useEffect, useRef } from "react";
+import { useContext, useEffect, useRef } from "react";
 
+import { EditorViewContext } from "./editor-view-context";
 import { useEditor } from "./use-editor";
 
 import type { Command, MarkRenderer, NodeRenderer } from "@sbh321/docs-editor-core";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export interface EditorProps<NodeName extends string = string, MarkName extends string = string> {
   readonly className?: string;
+  /** Inline styles for the editor's container element — e.g. a zoom transform (see `ZoomControls`). */
+  readonly style?: CSSProperties;
   /** Whether the rendered document is directly editable. Defaults to `true`. */
   readonly editable?: boolean;
   /**
@@ -39,6 +42,7 @@ export function Editor<NodeName extends string = string, MarkName extends string
   props: EditorProps<NodeName, MarkName>,
 ): ReactNode {
   const { state, dispatch } = useEditor<NodeName, MarkName>();
+  const viewRegistry = useContext(EditorViewContext);
   const mountRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView<NodeName, MarkName> | null>(null);
   const { editable, nodeRenderers, markRenderers, keymap } = props;
@@ -64,9 +68,14 @@ export function Editor<NodeName extends string = string, MarkName extends string
       ...(keymap ? { keymap } : {}),
     });
     viewRef.current = view;
+    // Publish the live view so floating UI siblings can position against it.
+    // `setView` (from the provider's `useState`) is stable, so this doesn't
+    // belong in the dependency array; `viewRegistry` is captured at mount.
+    viewRegistry?.setView(view);
     return () => {
       view.destroy();
       viewRef.current = null;
+      viewRegistry?.setView(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above.
   }, [dispatch, editable]);
@@ -75,5 +84,5 @@ export function Editor<NodeName extends string = string, MarkName extends string
     viewRef.current?.updateState(state);
   }, [state]);
 
-  return <div className={props.className} ref={mountRef} />;
+  return <div className={props.className} style={props.style} ref={mountRef} />;
 }

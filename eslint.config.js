@@ -10,7 +10,12 @@ import { reactConfig } from "@docs-editor/eslint-config/react";
 // (`turbo run lint`, cwd = package dir) both end up resolving back to this
 // single file, so every package's rules are scoped here via `files` instead
 // of living in a local eslint.config.js per package.
-const REACT_PATHS = ["packages/docs-editor-react/**", "apps/**", "examples/**"];
+const REACT_PATHS = [
+  "packages/docs-editor-react/**",
+  "packages/docs-editor-icons/**",
+  "apps/**",
+  "examples/**",
+];
 
 export default tseslint.config(
   ...baseConfig,

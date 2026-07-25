@@ -18,6 +18,7 @@ export {
   runEngineWrapIn,
 } from "./prosemirror/commands";
 export { runEngineRedo, runEngineUndo } from "./prosemirror/history";
+export { engineActiveBlock, engineActiveMarks } from "./prosemirror/queries";
 export {
   runEngineLiftListItem,
   runEngineSinkListItem,
@@ -51,14 +52,17 @@ export {
   engineTransactionInsertNode,
   engineTransactionInsertText,
   engineTransactionRemoveMark,
+  engineTransactionScrollIntoView,
   engineTransactionSelection,
   engineTransactionSetSelection,
 } from "./prosemirror/state";
 export {
   createEngineView,
   destroyEngineView,
+  engineViewCoordsAtPos,
   engineViewDom,
   engineViewHasFocus,
+  engineViewSetDecorations,
   focusEngineView,
   updateEngineViewState,
 } from "./prosemirror/view";

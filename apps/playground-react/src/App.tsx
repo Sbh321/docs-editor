@@ -24,10 +24,35 @@ import {
   wrapIn,
   wrapInList,
 } from "@sbh321/docs-editor-core";
-import { Editor, EditorProvider, useEditor } from "@sbh321/docs-editor-react";
-import { useState } from "react";
+import { defaultIcons } from "@sbh321/docs-editor-icons";
+import {
+  ContextMenu,
+  ContextMenuItem,
+  Editor,
+  EditorProvider,
+  FloatingToolbar,
+  OutlinePanel,
+  SlashMenu,
+  TableOfContents,
+  ThemeProvider,
+  Toolbar,
+  ToolbarButton,
+  ToolbarGroup,
+  ToolbarSeparator,
+  useEditor,
+  useIsBlockActive,
+  useIsMarkActive,
+  useSearchHighlight,
+  useZoom,
+  ZoomControls,
+  ZoomProvider,
+} from "@sbh321/docs-editor-react";
+import { useMemo, useState } from "react";
 
 import { DocumentPreview } from "./DocumentPreview";
+
+import type { Command, DocumentNode, Schema } from "@sbh321/docs-editor-core";
+import type { EditorTheme, SlashMenuItem } from "@sbh321/docs-editor-react";
 
 type NodeName =
   | "doc"
@@ -49,6 +74,8 @@ type NodeName =
   | "text";
 type MarkName = "bold" | "link";
 
+const IMAGE_SRC = "https://placekitten.com/200/120";
+
 const schema = createSchema({
   topNode: "doc",
   nodes: {
@@ -59,20 +86,11 @@ const schema = createSchema({
     bullet_list: { group: "block", content: "list_item+" },
     ordered_list: { group: "block", content: "list_item+", attrs: { order: { default: 1 } } },
     list_item: { content: "paragraph block*" },
-    // No `content` at all: a leaf node — no children ever allowed.
     divider: { group: "block" },
     code_block: { group: "block", content: "text*", marks: "none", code: true },
-    // `src` needs a default so `image` is "generatable" — it's required
-    // (not optional) in `figure`'s content below, and ProseMirror's schema
-    // compiler rejects a required content position filled by a node type
-    // it can't construct from defaults alone.
     image: { group: "block", attrs: { src: { default: "" }, alt: { default: "" } } },
     figure: { group: "block", content: "image caption?" },
     caption: { content: "inline*" },
-    // Tables. `table_row`'s content uses the shared "tablecell" group both
-    // cell types declare (the content grammar has no alternation, but the
-    // matcher resolves groups). `tableRole` is what the engine's table
-    // support keys off; cells are `isolating` and carry colspan/rowspan.
     table: { group: "block", content: "table_row+", tableRole: "table", isolating: true },
     table_row: { content: "tablecell+", tableRole: "row" },
     table_cell: {
@@ -97,6 +115,88 @@ const schema = createSchema({
   },
 });
 
+// Inserts, expressed as commands so they compose with the toolbar, slash menu,
+// and context menu the same way `toggleMark`/`setBlockType` do — there's no
+// bespoke "insert" primitive, just `Transaction.insertNode()`.
+function insertNodeCommand(build: (nodeSchema: Schema) => DocumentNode): Command {
+  return (state, dispatch) => {
+    dispatch?.(state.tr.insertNode(build(state.schema)));
+    return true;
+  };
+}
+
+const insertDivider = insertNodeCommand((s) => s.node("divider"));
+const insertImage = insertNodeCommand((s) => s.node("image", { src: IMAGE_SRC, alt: "" }));
+const insertFigure = insertNodeCommand((s) =>
+  s.node("figure", undefined, [
+    s.node("image", { src: IMAGE_SRC, alt: "" }),
+    s.node("caption", undefined, [s.text("A caption.")]),
+  ]),
+);
+const insertTable = insertNodeCommand((s) => {
+  const cell = (text: string) =>
+    s.node("table_cell", undefined, [s.node("paragraph", undefined, [s.text(text)])]);
+  const row = (a: string, b: string) => s.node("table_row", undefined, [cell(a), cell(b)]);
+  return s.node("table", undefined, [row("A", "B"), row("C", "D")]);
+});
+
+const theme: EditorTheme = {
+  icons: defaultIcons,
+  classNames: {
+    toolbar: "pg-toolbar",
+    toolbarGroup: "pg-toolbar-group",
+    toolbarSeparator: "pg-toolbar-separator",
+    toolbarButton: "pg-toolbar-button",
+    toolbarButtonActive: "pg-toolbar-button--active",
+    floatingToolbar: "pg-floating-toolbar",
+    slashMenu: "pg-slash-menu",
+    slashMenuOption: "pg-slash-option",
+    slashMenuOptionActive: "pg-slash-option--active",
+    contextMenu: "pg-context-menu",
+    contextMenuItem: "pg-context-item",
+    outline: "pg-outline",
+    tableOfContents: "pg-toc",
+    zoomControls: "pg-zoom",
+    zoomButton: "pg-zoom-button",
+    zoomLabel: "pg-zoom-label",
+  },
+  tokens: { accent: "#2563eb" },
+};
+
+const slashItems: readonly SlashMenuItem[] = [
+  {
+    id: "h1",
+    label: "Heading 1",
+    iconName: "heading1",
+    keywords: ["h1", "title"],
+    command: setBlockType("heading", { level: 1 }),
+  },
+  {
+    id: "h2",
+    label: "Heading 2",
+    iconName: "heading2",
+    keywords: ["h2"],
+    command: setBlockType("heading", { level: 2 }),
+  },
+  { id: "quote", label: "Quote", iconName: "quote", command: wrapIn("blockquote") },
+  {
+    id: "bullet",
+    label: "Bullet list",
+    iconName: "bulletList",
+    keywords: ["ul"],
+    command: wrapInList("bullet_list"),
+  },
+  { id: "code", label: "Code block", iconName: "code", command: setBlockType("code_block") },
+  {
+    id: "divider",
+    label: "Divider",
+    iconName: "divider",
+    keywords: ["hr", "rule"],
+    command: insertDivider,
+  },
+  { id: "table", label: "Table", iconName: "table", command: insertTable },
+];
+
 function createInitialState() {
   const doc = schema.createDocument([
     schema.node("paragraph", undefined, [schema.text("Hello, Docs Editor.")]),
@@ -110,15 +210,155 @@ function createInitialState() {
   });
 }
 
-function EditorPlayground() {
+/** A formatting button whose pressed state tracks whether the mark is active. */
+function MarkButton(props: {
+  readonly mark: MarkName;
+  readonly iconName: string;
+  readonly label: string;
+}) {
+  return (
+    <ToolbarButton
+      command={toggleMark(props.mark)}
+      active={useIsMarkActive(props.mark)}
+      iconName={props.iconName}
+      label={props.label}
+    />
+  );
+}
+
+/** A block-style button whose pressed state tracks the active block type. */
+function BlockButton(props: {
+  readonly nodeType: NodeName;
+  readonly attrs?: Record<string, unknown>;
+  readonly command: Command;
+  readonly iconName?: string;
+  readonly label: string;
+  readonly children?: React.ReactNode;
+}) {
+  const active = useIsBlockActive<NodeName, MarkName>(props.nodeType, props.attrs);
+  return (
+    <ToolbarButton
+      command={props.command}
+      active={active}
+      label={props.label}
+      {...(props.iconName ? { iconName: props.iconName } : {})}
+    >
+      {props.children}
+    </ToolbarButton>
+  );
+}
+
+function MainToolbar() {
   const { state, dispatch } = useEditor<NodeName, MarkName>();
-  const [href, setHref] = useState("https://example.com");
-  const [imageSrc, setImageSrc] = useState("https://placekitten.com/200/120");
+  const [href, setHref] = useState("https://docs-editor.example/");
+
+  return (
+    <Toolbar label="Formatting" className="pg-toolbar">
+      <ToolbarGroup label="History">
+        <ToolbarButton command={undo} iconName="undo" label="Undo" />
+        <ToolbarButton command={redo} iconName="redo" label="Redo" />
+      </ToolbarGroup>
+      <ToolbarSeparator />
+      <ToolbarGroup label="Text">
+        <MarkButton mark="bold" iconName="bold" label="Toggle bold" />
+      </ToolbarGroup>
+      <ToolbarSeparator />
+      <ToolbarGroup label="Blocks">
+        <BlockButton
+          nodeType="heading"
+          attrs={{ level: 1 }}
+          command={setBlockType("heading", { level: 1 })}
+          iconName="heading1"
+          label="Heading 1"
+        />
+        <BlockButton
+          nodeType="heading"
+          attrs={{ level: 2 }}
+          command={setBlockType("heading", { level: 2 })}
+          iconName="heading2"
+          label="Heading 2"
+        />
+        <BlockButton
+          nodeType="paragraph"
+          command={setBlockType("paragraph")}
+          iconName="paragraph"
+          label="Paragraph"
+        />
+        <BlockButton
+          nodeType="code_block"
+          command={setBlockType("code_block")}
+          iconName="code"
+          label="Code block"
+        />
+        <ToolbarButton command={wrapIn("blockquote")} iconName="quote" label="Quote" />
+        <ToolbarButton command={lift} label="Un-quote" />
+        <ToolbarButton
+          command={wrapInList("bullet_list")}
+          iconName="bulletList"
+          label="Bullet list"
+        />
+        <ToolbarButton
+          command={wrapInList("ordered_list")}
+          iconName="orderedList"
+          label="Ordered list"
+        />
+      </ToolbarGroup>
+      <ToolbarSeparator />
+      <ToolbarGroup label="Insert">
+        <ToolbarButton command={insertDivider} iconName="divider" label="Insert divider" />
+        <ToolbarButton command={insertImage} iconName="image" label="Insert image" />
+        <ToolbarButton command={insertFigure} label="Insert figure" />
+        <ToolbarButton command={insertTable} iconName="table" label="Insert table" />
+        <ToolbarButton onClick={() => dispatch(state.tr.insertText("Hi! "))} label='Insert "Hi! "'>
+          Hi!
+        </ToolbarButton>
+      </ToolbarGroup>
+      <ToolbarSeparator />
+      <ToolbarGroup label="Link">
+        <input
+          aria-label="Link href"
+          value={href}
+          onChange={(event) => setHref(event.target.value)}
+        />
+        <ToolbarButton command={toggleMark("link", { href })} iconName="link" label="Toggle link" />
+      </ToolbarGroup>
+      <ZoomControls className="pg-zoom" />
+    </Toolbar>
+  );
+}
+
+function TableToolbar() {
+  return (
+    <Toolbar label="Table" className="pg-toolbar">
+      <ToolbarButton command={addRowAfter} label="Add row" />
+      <ToolbarButton command={addColumnAfter} label="Add column" />
+      <ToolbarButton command={deleteRow} label="Delete row" />
+      <ToolbarButton command={deleteColumn} label="Delete column" />
+      <ToolbarButton command={mergeCells} label="Merge cells" />
+      <ToolbarButton command={toggleHeaderRow} label="Toggle header row" />
+      <ToolbarButton command={deleteTable} label="Delete table" />
+    </Toolbar>
+  );
+}
+
+function FindReplace() {
+  const { state, dispatch } = useEditor<NodeName, MarkName>();
   const [query, setQuery] = useState("Docs");
   const [replacement, setReplacement] = useState("Replaced");
 
+  const from = Math.min(state.selection.anchor, state.selection.head);
+  const to = Math.max(state.selection.anchor, state.selection.head);
+  const matches = useMemo(() => (query ? findText(state.doc, query) : []), [state.doc, query]);
+  // The "active" match is whichever one the selection currently covers.
+  const activeIndex = matches.findIndex((match) => match.from === from && match.to === to);
+
+  // Paint every match live as the query/document change; the selected match
+  // gets the active class. This is the Milestone 3.10 deferral resolved:
+  // `findText` gives positions, `useSearchHighlight` paints them via the new
+  // decoration layer.
+  useSearchHighlight(query, activeIndex >= 0 ? { activeIndex } : {});
+
   function findNext() {
-    const matches = findText(state.doc, query);
     if (matches.length === 0) {
       return;
     }
@@ -130,182 +370,146 @@ function EditorPlayground() {
   }
 
   function replaceSelection() {
-    const from = Math.min(state.selection.anchor, state.selection.head);
-    const to = Math.max(state.selection.anchor, state.selection.head);
     dispatch(state.tr.insertText(replacement, from, to));
   }
 
-  function insertTable() {
-    const cell = (text: string) =>
-      state.schema.node("table_cell", undefined, [
-        state.schema.node("paragraph", undefined, [state.schema.text(text)]),
-      ]);
-    const row = (a: string, b: string) =>
-      state.schema.node("table_row", undefined, [cell(a), cell(b)]);
-    // A table is an ordinary node inserted with insertNode() — no bespoke
-    // "insertTable" command, the same primitive dividers/images use.
-    dispatch(
-      state.tr.insertNode(state.schema.node("table", undefined, [row("A", "B"), row("C", "D")])),
-    );
-  }
+  return (
+    <div className="pg-panel">
+      <h2>Find &amp; replace</h2>
+      <input aria-label="Find" value={query} onChange={(event) => setQuery(event.target.value)} />
+      <button onClick={findNext}>Find next</button>
+      <input
+        aria-label="Replace with"
+        value={replacement}
+        onChange={(event) => setReplacement(event.target.value)}
+      />
+      <button onClick={replaceSelection}>Replace</button>
+    </div>
+  );
+}
+
+function EditorWorkspace() {
+  const { state } = useEditor<NodeName, MarkName>();
+  const { editorStyle } = useZoom();
 
   return (
-    <main>
-      <h1>Docs Editor Playground</h1>
-      <p>
-        <code>@sbh321/docs-editor-react</code>'s <code>&lt;Editor /&gt;</code> below is real,
-        typeable <code>contentEditable</code> rendering. Phase 3: <code>heading</code> changes a
-        block's type in place via <code>setBlockType</code>; <code>blockquote</code> wraps/unwraps
-        via <code>wrapIn</code>/<code>lift</code>; <code>link</code> is just <code>toggleMark</code>{" "}
-        with an attribute-carrying mark; lists use <code>wrapInList</code> plus <code>Enter</code>/
-        <code>Tab</code>/<code>Shift-Tab</code> bound to <code>splitListItem</code>/
-        <code>sinkListItem</code>/<code>liftListItem</code> — click into a list item and try them.{" "}
-        <code>divider</code>/<code>image</code>/<code>figure</code> are leaf/near-leaf nodes
-        inserted via <code>Transaction.insertNode()</code>. <code>code_block</code> declares{" "}
-        <code>code: true</code>, so <kbd>Enter</kbd> inside it inserts a newline (
-        <code>newlineInCode</code>) instead of splitting, and <kbd>Ctrl/Cmd-Enter</kbd> exits it (
-        <code>exitCode</code>). <code>table</code> is a real table (<code>tableRole</code>-tagged{" "}
-        <code>table</code>/<code>table_row</code>/<code>table_cell</code> nodes): "Insert table"
-        builds one with <code>insertNode()</code> (no bespoke command), and with{" "}
-        <code>tables: true</code> enabled you can drag across cells to make a rectangular{" "}
-        <code>cell</code> selection (a new <code>Selection</code> <code>type</code>), then run{" "}
-        <code>addRowAfter</code>/<code>addColumnAfter</code>/<code>deleteRow</code>/
-        <code>deleteColumn</code>/<code>mergeCells</code>/<code>toggleHeaderRow</code>/
-        <code>deleteTable</code>. <code>nodeRenderers</code>/<code>markRenderers</code> map{" "}
-        <code>paragraph</code> → <code>&lt;p&gt;</code>, <code>heading</code> →{" "}
-        <code>&lt;h1&gt;</code>–<code>&lt;h6&gt;</code>, <code>blockquote</code> →{" "}
-        <code>&lt;blockquote&gt;</code>, <code>bullet_list</code>/<code>ordered_list</code>/
-        <code>list_item</code> → <code>&lt;ul&gt;</code>/<code>&lt;ol&gt;</code>/
-        <code>&lt;li&gt;</code>, <code>divider</code> → <code>&lt;hr&gt;</code>,{" "}
-        <code>code_block</code> → <code>&lt;pre&gt;&lt;code&gt;</code>, <code>image</code> →{" "}
-        <code>&lt;img&gt;</code>, <code>figure</code>/<code>caption</code> →{" "}
-        <code>&lt;figure&gt;</code>/<code>&lt;figcaption&gt;</code>, <code>bold</code> →{" "}
-        <code>&lt;strong&gt;</code>, and <code>link</code> → <code>&lt;a href&gt;</code> — there's
-        still no theme system (Phase 4), so anything without an entry in those maps still falls back
-        to a generic, unstyled element named after it. Other shortcuts: <kbd>Ctrl/Cmd-B</kbd>{" "}
-        (bold), <kbd>Ctrl/Cmd-Z</kbd> (undo), <kbd>Ctrl/Cmd-Shift-Z</kbd> (redo). "Find next" uses
-        the new <code>findText()</code> — a pure function over the document tree, no engine involved
-        — and "Replace" is just <code>insertText</code> over a match's range; there's no separate
-        replace primitive. The tree below the buttons is a separate debug preview of the same state.
-      </p>
-      <div>
-        <button onClick={() => dispatch(state.tr.insertText("Hi! "))}>Insert "Hi! "</button>
-        <button onClick={() => toggleMark("bold")(state, dispatch)}>Toggle bold</button>
-        <button onClick={() => setBlockType("heading", { level: 1 })(state, dispatch)}>
-          Heading 1
-        </button>
-        <button onClick={() => setBlockType("heading", { level: 2 })(state, dispatch)}>
-          Heading 2
-        </button>
-        <button onClick={() => setBlockType("paragraph")(state, dispatch)}>Paragraph</button>
-        <button onClick={() => setBlockType("code_block")(state, dispatch)}>Code block</button>
-        <button onClick={() => wrapIn("blockquote")(state, dispatch)}>Quote</button>
-        <button onClick={() => lift(state, dispatch)}>Un-quote</button>
-        <button onClick={() => wrapInList("bullet_list")(state, dispatch)}>Bullet list</button>
-        <button onClick={() => wrapInList("ordered_list")(state, dispatch)}>Ordered list</button>
-        <button onClick={() => dispatch(state.tr.insertNode(state.schema.node("divider")))}>
-          Insert divider
-        </button>
-        <input
-          aria-label="Link href"
-          value={href}
-          onChange={(event) => setHref(event.target.value)}
-        />
-        <button onClick={() => toggleMark("link", { href })(state, dispatch)}>Toggle link</button>
-        <input
-          aria-label="Image src"
-          value={imageSrc}
-          onChange={(event) => setImageSrc(event.target.value)}
-        />
-        <button
-          onClick={() =>
-            dispatch(state.tr.insertNode(state.schema.node("image", { src: imageSrc, alt: "" })))
-          }
-        >
-          Insert image
-        </button>
-        <button
-          onClick={() =>
-            dispatch(
-              state.tr.insertNode(
-                state.schema.node("figure", undefined, [
-                  state.schema.node("image", { src: imageSrc, alt: "" }),
-                  state.schema.node("caption", undefined, [state.schema.text("A caption.")]),
-                ]),
-              ),
-            )
-          }
-        >
-          Insert figure
-        </button>
-        <button onClick={() => undo(state, dispatch)}>Undo</button>
-        <button onClick={() => redo(state, dispatch)}>Redo</button>
-      </div>
-      <div>
-        <input aria-label="Find" value={query} onChange={(event) => setQuery(event.target.value)} />
-        <button onClick={findNext}>Find next</button>
-        <input
-          aria-label="Replace with"
-          value={replacement}
-          onChange={(event) => setReplacement(event.target.value)}
-        />
-        <button onClick={replaceSelection}>Replace</button>
-      </div>
-      <div>
-        <button onClick={insertTable}>Insert table</button>
-        <button onClick={() => addRowAfter(state, dispatch)}>Add row</button>
-        <button onClick={() => addColumnAfter(state, dispatch)}>Add column</button>
-        <button onClick={() => deleteRow(state, dispatch)}>Delete row</button>
-        <button onClick={() => deleteColumn(state, dispatch)}>Delete column</button>
-        <button onClick={() => mergeCells(state, dispatch)}>Merge cells</button>
-        <button onClick={() => toggleHeaderRow(state, dispatch)}>Toggle header row</button>
-        <button onClick={() => deleteTable(state, dispatch)}>Delete table</button>
-      </div>
-      <Editor
-        className="playground-editor"
-        nodeRenderers={{
-          paragraph: () => ["p", 0],
-          heading: (node) => [`h${Number(node.attrs.level) || 1}`, 0],
-          blockquote: () => ["blockquote", 0],
-          bullet_list: () => ["ul", 0],
-          ordered_list: (node) => ["ol", { start: String(node.attrs.order) }, 0],
-          list_item: () => ["li", 0],
-          divider: () => ["hr"],
-          code_block: () => ["pre", ["code", 0]],
-          image: (node) => ["img", { src: String(node.attrs.src), alt: String(node.attrs.alt) }],
-          figure: () => ["figure", 0],
-          caption: () => ["figcaption", 0],
-          table: () => ["table", ["tbody", 0]],
-          table_row: () => ["tr", 0],
-          table_cell: (node) => [
-            "td",
-            { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
-            0,
-          ],
-          table_header: (node) => [
-            "th",
-            { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
-            0,
-          ],
-        }}
-        markRenderers={{
-          bold: () => ["strong", 0],
-          link: (mark) => ["a", { href: String(mark.attrs.href) }, 0],
-        }}
-        keymap={{
-          "Mod-b": toggleMark("bold"),
-          "Mod-z": undo,
-          "Shift-Mod-z": redo,
-          Enter: chainCommands(newlineInCode, splitListItem("list_item")),
-          "Mod-Enter": exitCode,
-          Tab: sinkListItem("list_item"),
-          "Shift-Tab": liftListItem("list_item"),
-        }}
-      />
-      <div className="document-preview">
-        <DocumentPreview node={state.doc} />
-      </div>
-    </main>
+    <div className="pg-layout">
+      <aside className="pg-sidebar">
+        <div className="pg-panel">
+          <h2>Outline</h2>
+          <OutlinePanel className="pg-outline" />
+        </div>
+        <div className="pg-panel">
+          <h2>Table of contents</h2>
+          <TableOfContents className="pg-toc" />
+        </div>
+        <FindReplace />
+        <div className="pg-panel">
+          <h2>Document (debug)</h2>
+          <div className="document-preview">
+            <DocumentPreview node={state.doc} />
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <h1>Docs Editor Playground</h1>
+        <p>
+          Phase 4 headless UI: a roving-focus <code>Toolbar</code> whose buttons reflect active
+          state (<code>useIsMarkActive</code>/<code>useIsBlockActive</code>), a{" "}
+          <code>FloatingToolbar</code> over the selection, a <code>/</code> <code>SlashMenu</code>,
+          a right-click <code>ContextMenu</code>, <code>OutlinePanel</code>/
+          <code>TableOfContents</code> navigation, <code>ZoomControls</code>, and a headless{" "}
+          <code>ThemeProvider</code> supplying the class names, tokens, and{" "}
+          <code>@sbh321/docs-editor-icons</code> — all fully replaceable, styling optional.
+        </p>
+
+        <MainToolbar />
+        <TableToolbar />
+
+        <FloatingToolbar className="pg-floating-toolbar">
+          <MarkButton mark="bold" iconName="bold" label="Bold (floating)" />
+          <FloatingLinkButton />
+        </FloatingToolbar>
+
+        <SlashMenu items={slashItems} className="pg-slash-menu" />
+
+        <ContextMenu className="pg-context-menu">
+          <ContextMenuItem command={toggleMark("bold")} iconName="bold">
+            Bold
+          </ContextMenuItem>
+          <ContextMenuItem command={setBlockType("heading", { level: 1 })} iconName="heading1">
+            Heading 1
+          </ContextMenuItem>
+          <ContextMenuItem command={wrapIn("blockquote")} iconName="quote">
+            Quote
+          </ContextMenuItem>
+          <ContextMenuItem command={deleteTable} iconName="table">
+            Delete table
+          </ContextMenuItem>
+        </ContextMenu>
+
+        <div className="pg-editor-frame">
+          <Editor
+            className="playground-editor"
+            style={editorStyle}
+            nodeRenderers={{
+              paragraph: () => ["p", 0],
+              heading: (node) => [`h${Number(node.attrs.level) || 1}`, 0],
+              blockquote: () => ["blockquote", 0],
+              bullet_list: () => ["ul", 0],
+              ordered_list: (node) => ["ol", { start: String(node.attrs.order) }, 0],
+              list_item: () => ["li", 0],
+              divider: () => ["hr"],
+              code_block: () => ["pre", ["code", 0]],
+              image: (node) => [
+                "img",
+                { src: String(node.attrs.src), alt: String(node.attrs.alt) },
+              ],
+              figure: () => ["figure", 0],
+              caption: () => ["figcaption", 0],
+              table: () => ["table", ["tbody", 0]],
+              table_row: () => ["tr", 0],
+              table_cell: (node) => [
+                "td",
+                { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
+                0,
+              ],
+              table_header: (node) => [
+                "th",
+                { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
+                0,
+              ],
+            }}
+            markRenderers={{
+              bold: () => ["strong", 0],
+              link: (mark) => ["a", { href: String(mark.attrs.href) }, 0],
+            }}
+            keymap={{
+              "Mod-b": toggleMark("bold"),
+              "Mod-z": undo,
+              "Shift-Mod-z": redo,
+              Enter: chainCommands(newlineInCode, splitListItem("list_item")),
+              "Mod-Enter": exitCode,
+              Tab: sinkListItem("list_item"),
+              "Shift-Tab": liftListItem("list_item"),
+            }}
+          />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/** A link toggle for the floating toolbar, using a fixed demo href. */
+function FloatingLinkButton() {
+  return (
+    <ToolbarButton
+      command={toggleMark("link", { href: "https://docs-editor.example/" })}
+      active={useIsMarkActive("link")}
+      iconName="link"
+      label="Link (floating)"
+    />
   );
 }
 
@@ -314,7 +518,11 @@ export function App() {
 
   return (
     <EditorProvider initialState={initialState}>
-      <EditorPlayground />
+      <ThemeProvider theme={theme}>
+        <ZoomProvider>
+          <EditorWorkspace />
+        </ZoomProvider>
+      </ThemeProvider>
     </EditorProvider>
   );
 }

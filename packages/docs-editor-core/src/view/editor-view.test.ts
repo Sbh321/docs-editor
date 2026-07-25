@@ -158,4 +158,62 @@ describe("EditorView", () => {
 
     view.destroy();
   });
+
+  it("setDecorations paints a range and clears it, without a transaction", () => {
+    const mount = document.createElement("div");
+    let dispatched = false;
+    const view = new EditorView(mount, {
+      state: createTestState(),
+      dispatchTransaction: () => {
+        dispatched = true;
+      },
+      nodeRenderers: { paragraph: () => ["p", 0] },
+    });
+
+    // Highlight "Hel" (positions 1..4).
+    view.setDecorations([{ from: 1, to: 4, attributes: { class: "search-match" } }]);
+    const highlight = view.dom.querySelector(".search-match");
+    expect(highlight?.textContent).toBe("Hel");
+    // Setting decorations is view state, never a document edit.
+    expect(dispatched).toBe(false);
+
+    view.setDecorations([]);
+    expect(view.dom.querySelector(".search-match")).toBeNull();
+
+    view.destroy();
+  });
+
+  it("accepts initial decorations and clamps out-of-range positions instead of throwing", () => {
+    const mount = document.createElement("div");
+    const view = new EditorView(mount, {
+      state: createTestState(),
+      nodeRenderers: { paragraph: () => ["p", 0] },
+      // `to` past the end of the document — must be clamped, not throw.
+      decorations: [{ from: 1, to: 9999, attributes: { class: "hl" } }],
+    });
+
+    expect(view.dom.querySelector(".hl")?.textContent).toBe("Hello");
+
+    view.destroy();
+  });
+
+  it("keeps decorations applied across an updateState re-render", () => {
+    const mount = document.createElement("div");
+    const state = createTestState();
+    const view = new EditorView(mount, {
+      state,
+      nodeRenderers: { paragraph: () => ["p", 0] },
+    });
+
+    view.setDecorations([{ from: 1, to: 4, attributes: { class: "hl" } }]);
+    expect(view.dom.querySelector(".hl")?.textContent).toBe("Hel");
+
+    // A document edit shifts text; decorations are resolved against the new
+    // doc each render (here the same absolute range now covers different text)
+    // and must still render rather than being dropped or throwing.
+    view.updateState(state.apply(state.tr.insertText("XY ")));
+    expect(view.dom.querySelector(".hl")).not.toBeNull();
+
+    view.destroy();
+  });
 });

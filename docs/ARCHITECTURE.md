@@ -191,7 +191,7 @@ Should never import UI libraries.
 
 Responsible for:
 
-React integration only.
+React integration and the headless UI layer.
 
 Provides:
 
@@ -205,7 +205,16 @@ Providers
 
 Utilities
 
-React should remain a thin wrapper.
+Headless UI components (toolbar, floating toolbar, slash/context menus,
+outline, table of contents, zoom controls, theme provider)
+
+React should remain a thin wrapper around the core: the UI components are
+*presentation and interaction only*. They must never reimplement editing
+behavior — every one delegates to core commands and queries (`toggleMark`,
+`isMarkActive`, `getOutline`, …), keeping the "business logic belongs in the
+core" boundary intact. Each component is headless (unstyled, `role`-correct,
+`className`/render-prop driven); styling and icons are opt-in via the theme
+and the separate `@sbh321/docs-editor-icons` package.
 
 ---
 

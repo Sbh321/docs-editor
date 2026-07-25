@@ -1,8 +1,10 @@
-import { useEffect, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 
 import { EditorDispatchContext, EditorStateContext } from "./editor-context";
+import { EditorViewContext } from "./editor-view-context";
 
-import type { Dispatch, EditorState, Transaction } from "@sbh321/docs-editor-core";
+import type { EditorViewRegistry } from "./editor-view-context";
+import type { Dispatch, EditorState, EditorView, Transaction } from "@sbh321/docs-editor-core";
 import type { ReactNode } from "react";
 
 export interface EditorProviderProps<
@@ -35,6 +37,14 @@ export function EditorProvider<NodeName extends string = string, MarkName extend
   const [state, dispatch] = useReducer(applyTransaction<NodeName, MarkName>, props.initialState);
   const { onStateChange } = props;
 
+  // A slot the mounted `<Editor />` registers its live view into, so floating
+  // UI (selection toolbar, slash menu) can read caret coordinates and refocus
+  // the editor. Held here — the shared root of every editor consumer — rather
+  // than inside `<Editor />`, which is a leaf that can't provide to its
+  // siblings.
+  const [view, setView] = useState<EditorView | null>(null);
+  const viewRegistry = useMemo<EditorViewRegistry>(() => ({ view, setView }), [view]);
+
   useEffect(() => {
     onStateChange?.(state);
   }, [state, onStateChange]);
@@ -48,7 +58,9 @@ export function EditorProvider<NodeName extends string = string, MarkName extend
         back to the matching `NodeName`/`MarkName` (see editor-context.ts).
       */}
       <EditorDispatchContext.Provider value={dispatch as Dispatch<string>}>
-        {props.children}
+        <EditorViewContext.Provider value={viewRegistry}>
+          {props.children}
+        </EditorViewContext.Provider>
       </EditorDispatchContext.Provider>
     </EditorStateContext.Provider>
   );

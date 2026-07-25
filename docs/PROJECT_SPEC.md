@@ -376,13 +376,13 @@ Future formats may include:
 Initial packages:
 
 - @sbh321/docs-editor-core
-- @sbh321/docs-editor-react
+- @sbh321/docs-editor-react — React adapter and headless UI components
+- @sbh321/docs-editor-icons — optional default icon set (Phase 4)
 
 Planned packages:
 
 - @sbh321/docs-editor-vue
 - @sbh321/docs-editor-theme-default
-- @sbh321/docs-editor-icons
 - @sbh321/docs-editor-utils
 
 Future packages:

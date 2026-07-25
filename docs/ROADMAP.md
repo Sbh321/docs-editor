@@ -49,7 +49,7 @@ No milestone should introduce features that compromise the long-term architectur
 
 Project Phase:
 
-🟢 Phase 0 complete — Phase 1 (Editor Core) in progress: all exit criteria met; stays "In Progress" because plugin architecture/event system are deliberately deferred deliverables (no concrete consumer yet) — 🟢 Phase 2 (React Adapter) complete: state layer (`EditorProvider`, hooks), real `contentEditable` rendering (`EditorView`/`<Editor />`), a Next.js example, and customizable per-node/mark rendering (`nodeRenderers`/`markRenderers`, beyond Phase 2's original scope but built as an immediate follow-up), used across three apps (playground, basic-react, basic-next) — 🟢 Phase 3 (Rich Editing) complete: Milestone 3.1 (headings), 3.2 (quotes), 3.3 (links), 3.4 (keyboard shortcuts), 3.5 (lists), 3.6 (dividers, via a new `Transaction.insertNode()` and the package's first leaf node type), 3.7 (code blocks, via a new `NodeSpec.code` flag + `newlineInCode`/`exitCode`), 3.8 (images, figures & captions — leaf + near-leaf nodes reusing `insertNode()`), 3.9 (copy/paste — native OS clipboard round-trip verified with zero new code), 3.10 (search & replace, via a new pure `findText()` — replace needs no new primitive), and 3.11 (tables — a new `NodeSpec.tableRole`, a `type: "cell"` `Selection` kind for rectangular cell selection, an opt-in `tables` state option installing `prosemirror-tables`' editing plugin, and the row/column/merge/header commands) done, all verified live in the playground. The one remaining rich-editing item, *visual* search-match highlighting, is deferred to Phase 4 (UI) — it needs a decoration/overlay rendering layer, not a document-model capability (see Milestone 3.10's notes)
+🟢 Phase 0 complete — Phase 1 (Editor Core) in progress: all exit criteria met; stays "In Progress" because plugin architecture/event system are deliberately deferred deliverables (no concrete consumer yet) — 🟢 Phase 2 (React Adapter) complete: state layer (`EditorProvider`, hooks), real `contentEditable` rendering (`EditorView`/`<Editor />`), a Next.js example, and customizable per-node/mark rendering (`nodeRenderers`/`markRenderers`, beyond Phase 2's original scope but built as an immediate follow-up), used across three apps (playground, basic-react, basic-next) — 🟢 Phase 3 (Rich Editing) complete: Milestone 3.1 (headings), 3.2 (quotes), 3.3 (links), 3.4 (keyboard shortcuts), 3.5 (lists), 3.6 (dividers, via a new `Transaction.insertNode()` and the package's first leaf node type), 3.7 (code blocks, via a new `NodeSpec.code` flag + `newlineInCode`/`exitCode`), 3.8 (images, figures & captions — leaf + near-leaf nodes reusing `insertNode()`), 3.9 (copy/paste — native OS clipboard round-trip verified with zero new code), 3.10 (search & replace, via a new pure `findText()` — replace needs no new primitive), and 3.11 (tables — a new `NodeSpec.tableRole`, a `type: "cell"` `Selection` kind for rectangular cell selection, an opt-in `tables` state option installing `prosemirror-tables`' editing plugin, and the row/column/merge/header commands) done, all verified live in the playground — 🟢 Phase 4 (User Interface) complete: a headless UI layer (active-state queries + outline in core; toolbar, floating toolbar, slash/context menus, outline panel, table of contents, zoom controls, and a headless theme provider in the React adapter; plus a new `@sbh321/docs-editor-icons` package), and a decoration/overlay layer (`Decoration` + `EditorView.setDecorations`) that finally paints *visual* search-match highlighting — the one rich-editing item deferred out of Milestone 3.10 — all verified live in the playground with unit and Playwright e2e coverage
 
 Current Version:
 
@@ -801,8 +801,10 @@ omissions — the same way Lists waited for Keyboard Shortcuts to exist):
 - **Visual search-match highlighting** — `findText()` deliberately returns
   positions only. Painting them (highlighting every match, not just moving the
   selection to the current one) needs a decoration/overlay rendering layer
-  this package doesn't have yet — a Phase 4 (UI) / rendering concern, tracked
-  for when that layer exists.
+  this package didn't have yet — a Phase 4 (UI) / rendering concern. **Resolved
+  in Phase 4**: the decoration layer (`Decoration` + `EditorView.setDecorations`)
+  and the adapter's `useSearchHighlight` now paint every match — see the Phase 4
+  section.
 
 ## Milestone 3.11 — Tables (done)
 
@@ -872,7 +874,7 @@ v0.3.0
 
 Status:
 
-Planned
+Complete
 
 Objective:
 
@@ -890,11 +892,128 @@ Deliverables:
 - Theme provider
 - Icon package
 
+Phase 4 delivered all nine in one pass, split cleanly across the two existing
+packages plus one new one — never a styled component kit. Per ARCHITECTURE.md's
+"Headless First" ("everything visible should be replaceable… nothing should
+require a specific design system") every component is unstyled behavior only:
+it accepts `className`/render props, reads optional theme class names, and works
+with no styling at all. Two architectural decisions were taken to the user
+before any code (matching Milestones 2.2/3.11): the UI components live in
+`@sbh321/docs-editor-react` (not a separate UI package), and a default icon set
+ships as a new `@sbh321/docs-editor-icons` package.
+
+## The foundational gap: active-state queries (core)
+
+The first thing Phase 4 needed didn't exist yet: a way to ask *"is this already
+applied here?"*. A command dry run (`toggleMark("bold")(state)` → `boolean`)
+answers *"can this apply?"* (a button's `disabled` state), but nothing answered
+*"is bold currently on?"* (a button's *pressed* state). That's a pure query over
+document + selection — framework-agnostic, so it belongs in **core**, and it's
+the prerequisite every UI surface here shares. New `docs-editor-core` additions:
+
+- `src/queries/` — `isMarkActive`/`activeMarks` (at a collapsed cursor these are
+  the stored marks for the next character; over a range, only marks covering the
+  *entire* selection, so a half-bold range reports bold inactive — matching what
+  `toggleMark` would remove), `activeBlockType`/`isBlockActive`, and
+  `getTextBefore(doc, pos)` (the text of the current block up to a position,
+  for slash-trigger detection). Marks/block queries go through the engine
+  adapter (they need `storedMarks` and the resolved-position parent, engine
+  concepts); `getTextBefore` is pure over `DocumentNode` like `findText`.
+- `src/outline/` — `getOutline(doc, options?)`, a pure function returning each
+  heading's level/text/position range (defaults `"heading"`/`"level"`,
+  overridable — the core models no fixed schema). Powers the outline panel and
+  table of contents.
+- `EditorView.coordsAtPos(pos)` — wraps `prosemirror-view`'s own `coordsAtPos`
+  (no ProseMirror type crosses the boundary), for anchoring floating UI to a
+  document position.
+- `Transaction.scrollIntoView()` — flags a transaction so a live view scrolls
+  the resulting selection into view (a no-op headless), used by outline
+  navigation.
+- **A decoration/overlay layer** — a new `src/decoration/` module (`Decoration`
+  = `{ from, to, attributes }`, plain data like `Selection`/`DOMOutputSpec`) and
+  `EditorView.setDecorations(...)`, which paints ranges (a class/style) without
+  editing the document. Decorations are **view state**, deliberately kept out of
+  the state/dispatch pipeline: routing them through `apply` would loop, since
+  `state.doc` gets a fresh identity every apply. Positions are resolved against
+  the current doc each render and clamped, so the model is "recompute and re-set
+  on every change" — always correct, no position-mapping. This **resolves the
+  Milestone 3.10 deferral**: `findText` gave the positions; the decoration layer
+  paints them. It also generalizes to future comment/spellcheck overlays. The
+  React adapter's `useSearchHighlight`/`<SearchHighlight>` (and the generic
+  `useDecorations`) sit on top; the playground highlights all matches live, with
+  a distinct class on the active one, covered by a new e2e test.
+
+## `@sbh321/docs-editor-icons` (new package)
+
+Optional default icons. A shared stroked, `currentColor`, `1em` `Icon` shell;
+per-glyph tree-shakeable components (`BoldIcon`, `Heading1Icon`, …); and a
+`defaultIcons` map keyed by editor *intent* (`"bold"`, `"heading1"`, …) so a
+theme can swap artwork without callers changing lookups. Icons with no `title`
+are `aria-hidden` (decorative); a `title` exposes them as labelled images. The
+React components never import this package — icons reach them only through the
+theme's `icons` map or an explicit prop, so the editor stays headless and the
+icon bundle stays opt-in.
+
+## `@sbh321/docs-editor-react` UI (headless components + hooks)
+
+New dependency: [`@floating-ui/react`](https://floating-ui.com) for positioning
+(named in PROJECT_SPEC), used only by the floating surfaces.
+
+- **Hooks** — `useIsMarkActive`/`useIsBlockActive`/`useActiveMarks`/
+  `useActiveBlockType` (wrap the core queries against current state),
+  `useCommand` (bridges a `Command` to a control: `{ run, enabled }` — the seam
+  between the command layer and any button), `useOutline`, and `useEditorView`
+  (the live view, published upward by `<Editor />` via a new context so floating
+  UI can read caret coordinates and refocus).
+- **Toolbar** — `Toolbar` (`role="toolbar"`, roving-tabindex arrow-key
+  navigation, one tab stop), `ToolbarButton` (auto-wires `disabled`/`aria-pressed`
+  from a command + active state; resolves icons from `icon` or a theme
+  `iconName`), `ToolbarGroup`, `ToolbarSeparator`.
+- **FloatingToolbar** — follows a non-empty text selection, anchored to a
+  virtual element built from `coordsAtPos`; hides when the selection collapses.
+- **SlashMenu** — opens on a `/` trigger at a word boundary (detected via
+  `getTextBefore`), filterable, keyboard-driven (capture-phase handler on the
+  view so arrows/Enter don't move the caret). Choosing an item removes the typed
+  `/query` and *then* runs the command as a second dispatch — two ordered edits
+  keep document integrity, since a command's transaction is built from the
+  post-deletion state.
+- **ContextMenu** / **ContextMenuItem** — right-click menu at the pointer, focus
+  trapped, dismiss on Escape/outside/selection, arrow-navigable.
+- **OutlinePanel** / **TableOfContents** — jump-to navigation built on
+  `useOutline` (flat vs. nested-ordered); clicking navigates + scrolls into view.
+- **ZoomProvider** / **useZoom** / **ZoomControls** — zoom is *transient UI
+  state*, which ARCHITECTURE.md's State Architecture assigns to the adapter, not
+  the document model; the provider exposes an `editorStyle` (a `scale` transform)
+  to spread onto `<Editor style>`.
+- **ThemeProvider** / **useTheme** — a headless theme contract: `classNames`
+  (per-slot), `icons` (by intent, accepting the icons package's `defaultIcons`),
+  and `tokens` (exposed as CSS custom properties). No theme → components render
+  unstyled and icon-free.
+
+`<Editor />` gained a `style` prop (for the zoom transform) and now publishes
+its `EditorView` into a context on mount.
+
+## Verification
+
+- Core: unit tests for the active-state queries, outline extraction, and
+  text-before helper.
+- React/icons: component/hook unit tests (Toolbar active + roving focus,
+  ThemeProvider classes/icons/tokens, outline nesting + navigation, zoom
+  clamping, icon rendering/a11y).
+- Playground: rebuilt on the new components (preserving the Phase 3 e2e button
+  labels and debug preview), with new Playwright e2e for toolbar active-state,
+  the floating toolbar, the slash menu (open/filter/run + query removal), the
+  right-click context menu, outline navigation, and zoom — the parts unit tests
+  can't cover (real selection geometry, pointer events, live rendering).
+
 Exit Criteria:
 
-- Complete writing workflow supported
-- UI remains fully replaceable
-- Styling remains optional
+- Complete writing workflow supported ✅ (formatting, block styles, inserts,
+  navigation, and zoom all reachable through the UI)
+- UI remains fully replaceable ✅ (every component is unstyled behavior taking
+  `className`/render props; icons and theme are opt-in)
+- Styling remains optional ✅ (no component requires a theme or any CSS to
+  function; `useTheme` degrades to an empty theme with no provider)
 
 Target Version:
 

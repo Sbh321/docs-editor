@@ -138,6 +138,11 @@ export function engineTransactionSetSelection(
   transaction.setSelection(toEngineSelection(transaction.doc, selection));
 }
 
+/** Flags the transaction to scroll its selection into view when the view dispatches it. */
+export function engineTransactionScrollIntoView(transaction: EngineTransaction): void {
+  transaction.scrollIntoView();
+}
+
 export function engineTransactionAddMark(
   transaction: EngineTransaction,
   from: number,

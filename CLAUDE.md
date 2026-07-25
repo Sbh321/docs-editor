@@ -138,7 +138,7 @@ Never depend on UI libraries.
 
 ## docs-editor-react
 
-Contains only React integration.
+Contains React integration and the headless UI layer (Phase 4).
 
 Examples:
 
@@ -146,10 +146,20 @@ Examples:
 - hooks
 - providers
 - contexts
+- headless UI components (toolbar, floating toolbar, slash/context menus,
+  outline, table of contents, zoom controls, theme provider)
 
-React must remain a thin adapter.
+React must remain a thin adapter. The UI components are presentation and
+interaction only — they delegate all editing behavior to core commands and
+queries and must never reimplement it.
 
 Never duplicate editor logic here.
+
+## docs-editor-icons
+
+Optional default icon set for the headless UI (Phase 4). React components only;
+never imported by the core. The React UI stays icon-agnostic — icons reach it
+through the theme or an explicit prop, so this package is always opt-in.
 
 ---
 

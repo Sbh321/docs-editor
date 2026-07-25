@@ -1,17 +1,32 @@
 import {
   createEngineView,
   destroyEngineView,
+  engineViewCoordsAtPos,
   engineViewDom,
   engineViewHasFocus,
+  engineViewSetDecorations,
   focusEngineView,
   updateEngineViewState,
 } from "../engine";
 import { EditorState, Transaction } from "../state";
 
 import type { Command } from "../commands";
+import type { Decoration } from "../decoration";
 import type { MarkRenderer, NodeRenderer } from "../dom-output-spec";
 import type { EngineState, EngineTransaction, EngineView, EngineViewOptions } from "../engine";
 import type { Schema } from "../schema";
+
+/**
+ * A viewport pixel rectangle for a document position — the caret's bounds, in
+ * the same coordinate space as `getBoundingClientRect()`. Returned by
+ * {@link EditorView.coordsAtPos} for anchoring floating UI.
+ */
+export interface ViewCoords {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+}
 
 export interface EditorViewOptions<
   NodeName extends string = string,
@@ -34,6 +49,12 @@ export interface EditorViewOptions<
    * way typed input is.
    */
   readonly keymap?: Readonly<Record<string, Command<NodeName, MarkName>>>;
+  /**
+   * Initial visual decorations (overlays that paint a range without editing
+   * the document — e.g. search-match highlights). Replace them at any time
+   * with {@link EditorView.setDecorations}.
+   */
+  readonly decorations?: readonly Decoration[];
 }
 
 /**
@@ -111,6 +132,7 @@ export class EditorView<NodeName extends string = string, MarkName extends strin
       ...(options.keymap
         ? { keymap: buildEngineKeymap(options.state.schema, options.keymap) }
         : {}),
+      ...(options.decorations ? { decorations: options.decorations } : {}),
     };
     this.engine = createEngineView(mount, options.state.engine, engineOptions);
   }
@@ -123,6 +145,28 @@ export class EditorView<NodeName extends string = string, MarkName extends strin
   /** Syncs the view to a newly-applied state, without touching any other options. */
   updateState(state: EditorState<NodeName, MarkName>): void {
     updateEngineViewState(this.engine, state.engine);
+  }
+
+  /**
+   * The viewport pixel rectangle of the caret at document position `pos` —
+   * use it to anchor floating UI (a selection toolbar, a slash menu) to a
+   * position. Coordinates are in the same space as `getBoundingClientRect()`.
+   */
+  coordsAtPos(pos: number): ViewCoords {
+    return engineViewCoordsAtPos(this.engine, pos);
+  }
+
+  /**
+   * Replaces the view's visual {@link Decoration}s — overlays that paint
+   * ranges (e.g. search-match highlights) without touching the document.
+   * Applies immediately; pass `[]` to clear. Decorations are view state, so
+   * this does **not** go through the state/dispatch pipeline. Positions are
+   * resolved against the current document on every render, so recompute and
+   * call this whenever the document or your source (e.g. a search query)
+   * changes.
+   */
+  setDecorations(decorations: readonly Decoration[]): void {
+    engineViewSetDecorations(this.engine, decorations);
   }
 
   hasFocus(): boolean {

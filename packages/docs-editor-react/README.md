@@ -3,19 +3,23 @@
 Thin React adapter for [Docs Editor](../../README.md), built on top of
 [@sbh321/docs-editor-core](../docs-editor-core).
 
-> **Status:** [Phase 2 — React Adapter](../../docs/ROADMAP.md#phase-2--react-adapter)
-> complete — state layer (`EditorProvider` + hooks), real `contentEditable`
-> rendering (`<Editor />`), customizable per-node/mark rendering
-> (`nodeRenderers`/`markRenderers`), and keyboard shortcuts (`keymap`), used
-> across three apps (Vite playground, Vite example, Next.js example).
-> There's still no theme system (see [Rendering](#rendering) below), so any
-> type without a custom renderer falls back to a generic, unstyled default.
+> **Status:** [Phase 4 — User Interface](../../docs/ROADMAP.md#phase-4--user-interface)
+> complete. Builds on the Phase 2 adapter (`EditorProvider` + hooks, real
+> `contentEditable` `<Editor />`, `nodeRenderers`/`markRenderers`, `keymap`)
+> with a full **headless UI layer**: `Toolbar`, `FloatingToolbar`,
+> `SlashMenu`, `ContextMenu`, `OutlinePanel`, `TableOfContents`,
+> `ZoomControls`, a headless `ThemeProvider`, and the query/command hooks that
+> drive them. Every component is unstyled behavior only — styling and icons
+> stay optional (see [Headless UI](#headless-ui)).
 
 ## Package boundary
 
-This package provides React integration only — the Editor component, hooks,
-context, and providers. It must never duplicate editor logic that belongs in
-`@sbh321/docs-editor-core`. See
+This package provides React integration — the Editor component, hooks,
+context, providers, and (as of Phase 4) the headless UI components. It must
+never duplicate editor logic that belongs in `@sbh321/docs-editor-core`: every
+component here is *presentation and interaction only* and delegates all
+behavior to core commands and queries (`toggleMark`, `isMarkActive`,
+`getOutline`, …). See
 [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#package-boundaries) for the
 full boundary rules.
 
@@ -101,13 +105,71 @@ don't re-render on every document change — they can subscribe to
 `<Editor />` delegates entirely to `docs-editor-core`'s `EditorView`, which
 wraps `prosemirror-view` — no ProseMirror type crosses into this package.
 Any node/mark type without a `nodeRenderers`/`markRenderers` entry falls back
-to a generic, unstyled element named after it (`<paragraph>`, `<bold>`),
-since there's no theme system yet ([Phase
-4](../../docs/ROADMAP.md#phase-4--user-interface)) and no principled way to
-decide "every paragraph renders as `<p>`" globally, for every consumer, by
-default. A renderer is a `(node) => DOMOutputSpec` function returning a
+to a generic, unstyled element named after it (`<paragraph>`, `<bold>`) —
+there's no principled way to decide "every paragraph renders as `<p>`"
+globally, for every consumer, by default. (Phase 4's `ThemeProvider` is a
+separate concern: it styles the *UI chrome* — toolbars, menus — not the
+document's own node/mark rendering, which stays driven by these renderer maps.) A renderer is a `(node) => DOMOutputSpec` function returning a
 small, JSON-safe DSL (tag name, optional attributes, children) — see
 `@sbh321/docs-editor-core`'s README for the full shape.
+
+## Headless UI
+
+Phase 4 added an unstyled, accessible UI layer. Nothing here forces a look:
+every component renders semantic, `role`-correct markup, takes a `className`
+(and often a render prop), and reads *optional* theme class names/icons. With
+no `ThemeProvider` and no CSS, everything still works — just unstyled.
+
+### Query & command hooks
+
+The seam between core's headless commands/queries and any control:
+
+- **`useIsMarkActive(mark, attrs?)` / `useIsBlockActive(type, attrs?)`** —
+  whether a mark/block is *currently applied* (a button's pressed state). This
+  is distinct from a command dry run, which answers whether it *can* apply.
+- **`useActiveMarks()` / `useActiveBlockType()`** — the raw active state.
+- **`useCommand(command)`** → `{ run, enabled }` — bridges a core `Command` to
+  a control: `enabled` from a dry run, `run` dispatches and refocuses the editor.
+- **`useOutline(options?)`** — the document's heading structure.
+- **`useEditorView()`** — the live `EditorView` (or `null`), published by
+  `<Editor />`; used for caret coordinates and focus.
+- **`useSearchHighlight(query, options?)`** / **`<SearchHighlight>`** —
+  highlights every `findText` match of `query` (via the core decoration layer)
+  and returns the matches for "find next" navigation; the active match gets an
+  extra class. Headless — you style `docs-editor-search-match` /
+  `-active` (or your own classes). **`useDecorations(decorations)`** is the
+  generic overlay primitive underneath, for other decoration uses.
+
+### Components
+
+- **`Toolbar` / `ToolbarButton` / `ToolbarGroup` / `ToolbarSeparator`** — a
+  `role="toolbar"` with roving-tabindex arrow-key navigation. `ToolbarButton`
+  auto-wires `disabled`/`aria-pressed` from a `command` + `active`, and resolves
+  an icon from `icon` or a theme `iconName`.
+- **`FloatingToolbar`** — floats over a non-empty text selection, hides when it
+  collapses. Positioned with [`@floating-ui/react`](https://floating-ui.com).
+- **`SlashMenu`** — opens on a `/` trigger, filterable, keyboard-driven.
+  Choosing an item removes the typed `/query` and then runs its command.
+- **`ContextMenu` / `ContextMenuItem`** — a right-click menu at the pointer,
+  focus-trapped, dismiss on Escape/outside.
+- **`OutlinePanel` / `TableOfContents`** — jump-to navigation (flat / nested).
+- **`ZoomProvider` / `useZoom` / `ZoomControls`** — zoom as transient UI state;
+  `useZoom().editorStyle` spreads onto `<Editor style>`.
+- **`ThemeProvider` / `useTheme`** — a headless theme contract of `classNames`
+  (per slot), `icons` (by intent — accepts `@sbh321/docs-editor-icons`'
+  `defaultIcons`), and `tokens` (emitted as CSS custom properties).
+
+```tsx
+import { Toolbar, ToolbarButton, ThemeProvider } from "@sbh321/docs-editor-react";
+import { toggleMark } from "@sbh321/docs-editor-core";
+import { defaultIcons } from "@sbh321/docs-editor-icons";
+
+<ThemeProvider icons={defaultIcons} classNames={{ toolbarButton: "my-btn" }}>
+  <Toolbar label="Formatting">
+    <ToolbarButton command={toggleMark("bold")} active={useIsMarkActive("bold")} iconName="bold" label="Bold" />
+  </Toolbar>
+</ThemeProvider>;
+```
 
 ## Scripts
 

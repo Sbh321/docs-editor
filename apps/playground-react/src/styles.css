@@ -1,0 +1,319 @@
+/*
+ * Playground styling. The editor packages ship no styles — everything here is
+ * the *application's* choice, demonstrating that Phase 4's headless UI is fully
+ * styleable via the theme's class-name slots and CSS custom properties.
+ */
+
+:root {
+  --pg-accent: #2563eb;
+  --pg-border: #d4d4d8;
+  --pg-surface: #ffffff;
+  --pg-muted: #f4f4f5;
+  --pg-text: #18181b;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  color: var(--pg-text);
+}
+
+body {
+  margin: 0;
+  background: #fafafa;
+}
+
+.pg-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.pg-sidebar {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pg-panel {
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  background: var(--pg-surface);
+  padding: 12px;
+}
+
+.pg-panel h2 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #71717a;
+}
+
+/* Toolbar theme slots */
+.pg-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  background: var(--pg-surface);
+  margin-bottom: 12px;
+}
+
+.pg-toolbar-group {
+  display: flex;
+  gap: 2px;
+}
+
+.pg-toolbar-separator {
+  width: 1px;
+  align-self: stretch;
+  background: var(--pg-border);
+  margin: 2px 4px;
+}
+
+.pg-toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pg-toolbar-button:hover:not(:disabled) {
+  background: var(--pg-muted);
+}
+
+.pg-toolbar-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pg-toolbar-button--active {
+  background: color-mix(in srgb, var(--pg-accent) 15%, white);
+  border-color: color-mix(in srgb, var(--pg-accent) 40%, white);
+  color: var(--pg-accent);
+}
+
+/* Floating toolbar */
+.pg-floating-toolbar {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  background: #18181b;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 25%);
+}
+
+.pg-floating-toolbar .pg-toolbar-button {
+  color: #fafafa;
+}
+
+.pg-floating-toolbar .pg-toolbar-button:hover:not(:disabled) {
+  background: #3f3f46;
+}
+
+.pg-floating-toolbar .pg-toolbar-button--active {
+  background: var(--pg-accent);
+  color: #fff;
+}
+
+/* Slash menu */
+.pg-slash-menu {
+  min-width: 220px;
+  padding: 4px;
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  background: var(--pg-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 15%);
+}
+
+.pg-slash-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-slash-option--active {
+  background: color-mix(in srgb, var(--pg-accent) 12%, white);
+}
+
+/* Context menu */
+.pg-context-menu {
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  background: var(--pg-surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 15%);
+}
+
+.pg-context-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pg-context-item:hover:not(:disabled),
+.pg-context-item:focus-visible {
+  background: var(--pg-muted);
+  outline: none;
+}
+
+.pg-context-item:disabled {
+  opacity: 0.4;
+}
+
+/* Outline + TOC */
+.pg-outline,
+.pg-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pg-outline button,
+.pg-toc button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 3px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.pg-outline button:hover,
+.pg-toc button:hover {
+  background: var(--pg-muted);
+}
+
+.pg-toc ol {
+  list-style: decimal;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* Zoom */
+.pg-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.pg-zoom-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--pg-border);
+  border-radius: 6px;
+  background: var(--pg-surface);
+  cursor: pointer;
+}
+
+.pg-zoom-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pg-zoom-label {
+  min-width: 48px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* Search highlighting (decoration classes from useSearchHighlight) */
+.docs-editor-search-match {
+  background: #fde68a;
+  border-radius: 2px;
+}
+
+.docs-editor-search-match-active {
+  background: #f59e0b;
+  color: #1c1917;
+}
+
+/* Editor surface */
+.pg-editor-frame {
+  border: 1px solid var(--pg-border);
+  border-radius: 8px;
+  background: var(--pg-surface);
+  padding: 16px 20px;
+  overflow: hidden;
+}
+
+.playground-editor:focus {
+  outline: none;
+}
+
+.playground-editor h1 {
+  font-size: 1.6rem;
+}
+
+.playground-editor blockquote {
+  border-left: 3px solid var(--pg-border);
+  margin-inline: 0;
+  padding-left: 12px;
+  color: #52525b;
+}
+
+.playground-editor pre {
+  background: var(--pg-muted);
+  padding: 10px 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.playground-editor table {
+  border-collapse: collapse;
+}
+
+.playground-editor td,
+.playground-editor th {
+  border: 1px solid var(--pg-border);
+  padding: 4px 8px;
+  min-width: 40px;
+}

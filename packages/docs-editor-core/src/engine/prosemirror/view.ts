@@ -1,9 +1,12 @@
 import { keydownHandler } from "prosemirror-keymap";
 import { EditorView as ProseMirrorEditorView } from "prosemirror-view";
 
+import { createDecorationHolder, resolveDecorationSet, setHolderDecorations } from "./decorations";
 import { createGenericMarkView, createGenericNodeView } from "./node-view";
 
+import type { DecorationHolder } from "./decorations";
 import type { EngineState, EngineTransaction } from "./state";
+import type { Decoration } from "../../decoration";
 import type { DOMOutputSpec } from "../../dom-output-spec";
 import type { DocumentNode, Mark } from "../../schema";
 import type { DirectEditorProps } from "prosemirror-view";
@@ -35,7 +38,14 @@ export interface EngineViewOptions {
    * `"Mod-b"` — `"Mod-"` resolves to Cmd on Mac and Ctrl elsewhere).
    */
   readonly keymap?: Readonly<Record<string, EngineKeyBinding>>;
+  /** Initial visual decorations (overlays). Update them later with {@link engineViewSetDecorations}. */
+  readonly decorations?: readonly Decoration[];
 }
+
+// Each view's decoration holder, looked up by `engineViewSetDecorations`.
+// A WeakMap keeps this out of the view object itself and lets it be collected
+// with the view.
+const decorationHolders = new WeakMap<EngineView, DecorationHolder>();
 
 /**
  * Mounts a view onto `mount`. Delegates entirely to `prosemirror-view` for
@@ -83,11 +93,64 @@ export function createEngineView(
   if (options.keymap) {
     props.handleKeyDown = keydownHandler(options.keymap);
   }
-  return new ProseMirrorEditorView(mount, props);
+
+  // Decorations are read from a per-view holder on every render, so they
+  // survive `updateState` and stay in sync with whatever document the view is
+  // currently showing — see `resolveDecorationSet`.
+  const holder = createDecorationHolder(options.decorations ?? []);
+  props.decorations = (pmState) => resolveDecorationSet(holder, pmState.doc);
+
+  const view = new ProseMirrorEditorView(mount, props);
+  decorationHolders.set(view, holder);
+  return view;
+}
+
+/**
+ * Replaces the view's visual decorations and re-renders to apply them, without
+ * a document transaction — decorations are view state, not document state, so
+ * routing them through `dispatchTransaction` (and the app's state reducer)
+ * would be wrong. Positions are resolved against the current document each
+ * render, so recomputing decorations after every edit is both correct and the
+ * intended usage.
+ */
+export function engineViewSetDecorations(
+  view: EngineView,
+  decorations: readonly Decoration[],
+): void {
+  const holder = decorationHolders.get(view);
+  // `isDestroyed` guards the unmount race: a framework adapter may clear
+  // decorations (in an effect cleanup) after the view has already been
+  // destroyed, and `setProps` on a destroyed view throws.
+  if (!holder || view.isDestroyed) {
+    return;
+  }
+  setHolderDecorations(holder, decorations);
+  // Re-set the `decorations` prop with a fresh function identity so the view
+  // re-evaluates it and redraws — passing `{}` can leave the prop identity
+  // unchanged, letting the view skip recomputing decorations.
+  view.setProps({ decorations: (pmState) => resolveDecorationSet(holder, pmState.doc) });
 }
 
 export function engineViewDom(view: EngineView): HTMLElement {
   return view.dom;
+}
+
+/**
+ * The viewport pixel rectangle of the cursor position at `pos` — the caret's
+ * top/bottom/left/right, as returned by `prosemirror-view`'s own
+ * `coordsAtPos`. Used to anchor floating UI (a selection toolbar, a slash
+ * menu) to a document position.
+ */
+export function engineViewCoordsAtPos(
+  view: EngineView,
+  pos: number,
+): {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+} {
+  return view.coordsAtPos(pos);
 }
 
 /** Syncs the view to a newly-applied state, without touching any other props. */

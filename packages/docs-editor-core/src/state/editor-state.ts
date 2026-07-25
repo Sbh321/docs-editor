@@ -14,6 +14,7 @@ import {
   engineTransactionInsertText,
   engineTransactionPaste,
   engineTransactionRemoveMark,
+  engineTransactionScrollIntoView,
   engineTransactionSelection,
   engineTransactionSetSelection,
 } from "../engine";
@@ -119,6 +120,17 @@ export class Transaction<NodeName extends string = string, MarkName extends stri
   /** Overrides the selection this transaction will produce when applied. */
   setSelection(selection: Selection): this {
     engineTransactionSetSelection(this.engine, selection);
+    return this;
+  }
+
+  /**
+   * Flags this transaction so a live {@link import("../view").EditorView}
+   * scrolls the resulting selection into view when it dispatches — e.g. after
+   * moving the cursor to a heading from an outline. A no-op for headless,
+   * viewless use.
+   */
+  scrollIntoView(): this {
+    engineTransactionScrollIntoView(this.engine);
     return this;
   }
 

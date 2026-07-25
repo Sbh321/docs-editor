@@ -416,6 +416,47 @@ a decoration/overlay rendering layer this package doesn't have yet; `findText`
 gives the positions, and today a consumer surfaces the current one by moving
 the selection to it (as above).
 
+## Queries
+
+Active-state queries answer *"is this already applied here?"* — the pressed
+state a toolbar needs, distinct from a command dry run (which answers *"can
+this apply?"*, i.e. a button's `disabled` state):
+
+```ts
+import { isMarkActive, activeBlockType, isBlockActive } from "@sbh321/docs-editor-core";
+
+isMarkActive(state, "bold"); // is bold active for the selection?
+isMarkActive(state, "link", { href: "https://a.test" }); // ...with matching attrs?
+activeBlockType(state); // { type: "heading", attrs: { level: 2 } }
+isBlockActive(state, "heading", { level: 2 }); // true
+```
+
+At a collapsed cursor the active marks are the stored marks for the next typed
+character; over a range, only marks covering the *entire* selection count (a
+half-bold range reports bold inactive, matching what `toggleMark` would remove).
+`activeMarks(state)` returns them all.
+
+`getTextBefore(doc, pos)` returns the text of the current textblock up to a
+position (empty across a block boundary) — pure like `findText`, intended for
+trigger detection (e.g. a slash menu opening when the text before the cursor is
+`"/"` plus a query).
+
+## Outline
+
+`getOutline(doc, options?)` returns each heading as `{ level, text, from, to }`
+in document order — the data behind an outline panel or table of contents. It's
+pure over the `DocumentNode` tree (no engine), like `findText`. Which node type
+is a heading, and where its level lives, are explicit options (defaulting to
+`"heading"`/`"level"`) since the core models no fixed schema:
+
+```ts
+import { getOutline } from "@sbh321/docs-editor-core";
+
+getOutline(state.doc); // [{ level: 1, text: "Intro", from, to }, ...]
+// `from + 1` is the first position inside a heading — place a cursor there:
+state.apply(state.tr.setSelection({ anchor: entry.from + 1, head: entry.from + 1 }));
+```
+
 ## Clipboard
 
 `EditorState.copy(from?, to?)` returns a `ClipboardContent` — plain,
@@ -468,6 +509,41 @@ This class only owns the DOM/input bridge — deciding when to construct,
 update, and destroy one (component lifecycle) belongs to a framework adapter.
 `@sbh321/docs-editor-react`'s `<Editor />` is a thin wrapper around exactly
 this.
+
+`view.coordsAtPos(pos)` returns the caret's viewport rectangle (`{ top,
+bottom, left, right }`) at a document position — for anchoring floating UI (a
+selection toolbar, a slash menu) built by a framework adapter. Pair it with
+`Transaction.scrollIntoView()`, which flags a transaction so the view scrolls
+the resulting selection into view when it dispatches (a no-op headless) — e.g.
+after moving the cursor to a heading picked from an outline.
+
+### Decorations
+
+`view.setDecorations(decorations)` paints visual overlays on document ranges —
+adding a class, style, or attribute — **without changing the document**. A
+`Decoration` is plain data (`{ from, to, attributes }`) using the same position
+scheme as everything else, so a `findText` match is directly usable:
+
+```ts
+import { findText } from "@sbh321/docs-editor-core";
+
+const decorations = findText(state.doc, "hello").map((match) => ({
+  from: match.from,
+  to: match.to,
+  attributes: { class: "search-match" }, // you supply the CSS
+}));
+view.setDecorations(decorations); // pass [] to clear
+```
+
+Decorations are **view state, not document state** — they never touch a
+`Transaction`, `EditorState`, or history, and deliberately don't flow through
+the state/dispatch pipeline. Positions are resolved against the current
+document on every render and clamped to its bounds, so the intended usage is to
+*recompute and re-set* decorations whenever the document (or your source, like
+a search query) changes — always correct, no position-mapping needed. This is
+the overlay layer search-match highlighting needs (see the framework adapter's
+`useSearchHighlight`), and the same primitive future comment ranges or
+spellcheck squiggles would use.
 
 Native OS clipboard copy/paste (Ctrl/Cmd-C, -X, -V) works through this view
 with no extra code: `prosemirror-view` serializes the selection to the system

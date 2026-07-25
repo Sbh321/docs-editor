@@ -41,6 +41,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
+    "@floating-ui/react": "0.27.16",
     "@sbh321/docs-editor-core": "workspace:*"
   },
   "devDependencies": {

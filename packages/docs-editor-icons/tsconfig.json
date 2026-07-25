@@ -1,0 +1,10 @@
+{
+  "extends": "@docs-editor/typescript-config/react-library.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./.tsbuild",
+    "tsBuildInfoFile": "./.tsbuild/tsconfig.tsbuildinfo"
+  },
+  "include": ["src"],
+  "exclude": ["dist", ".tsbuild", "node_modules"]
+}
