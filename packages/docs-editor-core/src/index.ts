@@ -1,3 +1,9 @@
-// Placeholder entry point. The editor engine, commands, transactions, history,
-// and serialization land here in ROADMAP.md Phase 1 — Editor Core.
-export {};
+export * from "./clipboard";
+export * from "./commands";
+export * from "./dom-output-spec";
+export * from "./schema";
+export * from "./search";
+export * from "./selection";
+export * from "./serialization";
+export * from "./state";
+export * from "./view";

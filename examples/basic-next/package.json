@@ -1,0 +1,28 @@
+{
+  "name": "basic-next-example",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start --port 4175",
+    "lint": "eslint .",
+    "typecheck": "tsc --build",
+    "clean": "rm -rf .next .tsbuild"
+  },
+  "dependencies": {
+    "@sbh321/docs-editor-core": "workspace:*",
+    "@sbh321/docs-editor-react": "workspace:*",
+    "next": "16.2.10",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@docs-editor/eslint-config": "workspace:*",
+    "@docs-editor/typescript-config": "workspace:*",
+    "@types/node": "26.1.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

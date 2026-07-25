@@ -5,8 +5,12 @@ The minimal, public-facing reference for integrating
 application. Unlike `apps/playground-react` (an internal maintainer tool),
 this example is meant to be read by adopters evaluating the package.
 
-It currently contains no editor UI — see
-[docs/ROADMAP.md](../../docs/ROADMAP.md) for the implementation phases.
+It builds a schema, creates a document, and renders it via `EditorProvider` +
+`<Editor />` — real, typeable `contentEditable` rendering, with
+`nodeRenderers` mapping `paragraph` to a real `<p>`. Any node/mark without an
+entry there still falls back to a generic, unstyled element named after it
+(there's no theme system yet); see [docs/ROADMAP.md](../../docs/ROADMAP.md)
+for the implementation phases.
 
 ## Scripts
 

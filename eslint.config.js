@@ -35,4 +35,27 @@ export default tseslint.config(
     ],
     ...tseslint.configs.disableTypeChecked,
   },
+  {
+    // ProseMirror must stay encapsulated inside src/engine/ (see
+    // docs/ARCHITECTURE.md's "Editing Engine" section) — everything else in
+    // docs-editor-core operates on its own Schema/DocumentNode/Mark types.
+    // This turns that architectural rule into a lint failure instead of a
+    // convention someone can accidentally violate.
+    files: ["packages/docs-editor-core/src/**/*.ts"],
+    ignores: ["packages/docs-editor-core/src/engine/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["prosemirror-*"],
+              message:
+                "ProseMirror must stay encapsulated inside src/engine/. Use docs-editor-core's own Schema/DocumentNode/Mark types instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

@@ -18,7 +18,8 @@ place. No editor functionality has been implemented yet. See
 | [`packages/docs-editor-core`](./packages/docs-editor-core) | `@sbh321/docs-editor-core` — framework-agnostic editor engine |
 | [`packages/docs-editor-react`](./packages/docs-editor-react) | `@sbh321/docs-editor-react` — thin React adapter |
 | [`apps/playground-react`](./apps/playground-react) | Internal dev app verifying workspace linking |
-| [`examples/basic-react`](./examples/basic-react) | Minimal public-facing integration reference |
+| [`examples/basic-react`](./examples/basic-react) | Minimal public-facing integration reference (Vite) |
+| [`examples/basic-next`](./examples/basic-next) | Minimal public-facing integration reference (Next.js App Router) |
 | [`tooling/typescript-config`](./tooling/typescript-config) | Shared TypeScript configuration |
 | [`tooling/eslint-config`](./tooling/eslint-config) | Shared ESLint flat configuration |
 

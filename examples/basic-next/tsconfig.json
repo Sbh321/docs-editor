@@ -1,0 +1,22 @@
+{
+  "extends": "@docs-editor/typescript-config/next-app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./.tsbuild/tsconfig.tsbuildinfo",
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules", ".next", ".tsbuild"],
+  "references": [
+    { "path": "../../packages/docs-editor-core" },
+    { "path": "../../packages/docs-editor-react" }
+  ]
+}

@@ -15,6 +15,10 @@ coverage/
 # Vite
 .vite/
 
+# Next.js
+.next/
+next-env.d.ts
+
 # Env
 .env
 .env.local

@@ -3,7 +3,8 @@
   "compilerOptions": {
     "rootDir": "./src",
     "outDir": "./.tsbuild",
-    "tsBuildInfoFile": "./.tsbuild/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "./.tsbuild/tsconfig.tsbuildinfo",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
   "include": ["src"],
   "exclude": ["dist", ".tsbuild", "node_modules"]

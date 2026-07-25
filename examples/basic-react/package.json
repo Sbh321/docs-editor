@@ -12,6 +12,7 @@
     "clean": "rm -rf dist .tsbuild"
   },
   "dependencies": {
+    "@sbh321/docs-editor-core": "workspace:*",
     "@sbh321/docs-editor-react": "workspace:*",
     "react": "19.2.7",
     "react-dom": "19.2.7"

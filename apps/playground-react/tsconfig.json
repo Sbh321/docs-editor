@@ -6,5 +6,8 @@
   },
   "include": ["src"],
   "exclude": ["dist", ".tsbuild", "node_modules"],
-  "references": [{ "path": "../../packages/docs-editor-react" }]
+  "references": [
+    { "path": "../../packages/docs-editor-core" },
+    { "path": "../../packages/docs-editor-react" }
+  ]
 }

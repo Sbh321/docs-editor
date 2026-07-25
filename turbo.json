@@ -4,7 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "storybook-static/**"]
+      "outputs": ["dist/**", "storybook-static/**", ".next/**", "!.next/cache/**"]
     },
     "dev": {
       "dependsOn": ["^build"],
@@ -12,6 +12,7 @@
       "persistent": true
     },
     "lint": {
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "typecheck": {
@@ -19,6 +20,7 @@
       "outputs": [".tsbuild/**"]
     },
     "test": {
+      "dependsOn": ["^build"],
       "outputs": []
     },
     "test:e2e": {

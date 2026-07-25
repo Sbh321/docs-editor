@@ -19,6 +19,7 @@ export const baseConfig = tseslint.config(
       "**/playwright-report/**",
       "**/test-results/**",
       "**/.turbo/**",
+      "**/.next/**",
     ],
   },
   js.configs.recommended,
