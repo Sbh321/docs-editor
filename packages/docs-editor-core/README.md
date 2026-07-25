@@ -145,6 +145,11 @@ this backwards is exactly the kind of bug that fails silently — marks just
 never apply, no error — so it's covered by dedicated tests in
 `compile-schema.test.ts`.
 
+`MarkSpec` also carries `inclusive?` and `excludes?`. Set `inclusive: false`
+on a link so typing just past it isn't part of the link; set `excludes: "_"`
+on an inline `code` mark so it can't combine with bold/italic/etc. (a mark
+always excludes itself). Both are compiled straight through to ProseMirror.
+
 `compileEngineSchema()` also gives every non-text node/mark a default,
 placeholder `toDOM` — an element literally named after it (`<paragraph>`,
 `<bold>`), required because `prosemirror-view` refuses to render a node type
@@ -173,13 +178,19 @@ const next = state.apply(state.tr.insertText("Hi, "));
 
 `Transaction` covers text, node, and mark edits plus selection —
 `insertText`, `insertNode`, `delete`, `addMark`, `removeMark`,
-`setSelection`. `insertNode(node, from?, to?)` replaces a range (or the
-current selection) with a single already-validated node — the primitive
-behind inserting a leaf node like a divider:
+`setSelection`, `selectNode`, `scrollIntoView`. `insertNode(node, from?, to?)`
+replaces a range (or the current selection) with a single already-validated
+node — the primitive behind inserting a leaf node like a divider:
 
 ```ts
 const withDivider = state.apply(state.tr.insertNode(schema.node("divider")));
 ```
+
+`selectNode(pos)` selects a whole node as a unit (a *node selection*, which
+reads back as `{ type: "node" }`) — e.g. selecting an image or divider so it
+can be deleted with `deleteSelection`. This is also what a live view produces
+when you click an atomic node; `Selection` models three kinds now: `"text"`
+(the default), `"node"`, and `"cell"` (table cells).
 
 Commands that restructure the tree around *existing* content (wrap, lift,
 split a list item, ...) live in `../commands` instead of adding their own
@@ -226,11 +237,36 @@ toggleMark("bold")(state, (tr) => setState(state.apply(tr)));
 ```
 
 `deleteSelection`, `selectAll`, `toggleMark`, `setBlockType`, `wrapIn`,
-`lift`, `newlineInCode`, and `exitCode` wrap
+`lift`, `newlineInCode`, `exitCode`, `removeFormatting`, and the essential
+editing commands (`splitBlock`, `joinBackward`/`joinForward`, `joinUp`/
+`joinDown`, `liftEmptyBlock`, `createParagraphNear`, `selectNodeBackward`/
+`selectNodeForward`, `selectParentNode`) wrap
 [`prosemirror-commands`](https://www.npmjs.com/package/prosemirror-commands)
 (via `../engine`) rather than reimplementing "does this range already have
 this mark" ourselves — the same encapsulation rule applies: nothing outside
 `src/engine/` imports it directly.
+
+### baseKeymap — a working editor out of the box
+
+`baseKeymap` is a ready-made `Record<string, Command>` of the essential
+bindings (Enter splits the block, Backspace/Delete join or delete across
+boundaries, Mod-a selects all, Escape selects the parent). Spread it into a
+view's `keymap` and the editor behaves like a text editor immediately; layer
+your own bindings (and richer Enter handling for lists/code) on top:
+
+```ts
+import { baseKeymap, chainCommands, splitListItem, toggleMark } from "@sbh321/docs-editor-core";
+
+const keymap = {
+  ...baseKeymap,
+  "Mod-b": toggleMark("bold"),
+  // list/code handling first, then the base Enter chain
+  Enter: chainCommands(newlineInCode, splitListItem("list_item"), baseKeymap.Enter),
+};
+```
+
+`removeFormatting` clears every mark across the selection (the "clear
+formatting" action), reporting `false` for an empty selection.
 
 ```ts
 import { lift, setBlockType, wrapIn } from "@sbh321/docs-editor-core";

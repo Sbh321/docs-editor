@@ -1,4 +1,4 @@
-import { TextSelection } from "prosemirror-state";
+import { NodeSelection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 
 import type { Selection } from "../../selection";
@@ -10,6 +10,12 @@ export function toEngineSelection(
   doc: ProseMirrorNode,
   selection: Selection,
 ): ProseMirrorSelection {
+  if (selection.type === "node") {
+    // `anchor` is the position directly before the node; NodeSelection.create
+    // resolves it to the node there. Throws if it doesn't point at a selectable
+    // node, surfacing a bad selection rather than silently degrading it.
+    return NodeSelection.create(doc, selection.anchor);
+  }
   if (selection.type === "cell") {
     // For a cell selection, anchor/head point *at* the cells (the position
     // directly before each), which is exactly what CellSelection.create
@@ -32,6 +38,11 @@ export function fromEngineSelection(selection: ProseMirrorSelection): Selection 
       head: selection.$headCell.pos,
       type: "cell",
     };
+  }
+  if (selection instanceof NodeSelection) {
+    // `from`/`to` bracket the selected node; `from` is the position before it,
+    // which toEngineSelection uses to rebuild the NodeSelection.
+    return { anchor: selection.from, head: selection.to, type: "node" };
   }
   return { anchor: selection.anchor, head: selection.head };
 }

@@ -85,3 +85,19 @@ export function runEngineNewlineInCode(state: EngineState, dispatch?: EngineDisp
 export function runEngineExitCode(state: EngineState, dispatch?: EngineDispatch): boolean {
   return proseMirrorExitCode(state, dispatch);
 }
+
+/**
+ * Removes every mark from the current selection. Reports `false` when the
+ * selection is empty (there's no range to clear). `removeMark` with a `null`
+ * mark type clears all marks in the range.
+ */
+export function runEngineRemoveFormatting(state: EngineState, dispatch?: EngineDispatch): boolean {
+  const { from, to, empty } = state.selection;
+  if (empty) {
+    return false;
+  }
+  if (dispatch) {
+    dispatch(state.tr.removeMark(from, to, null));
+  }
+  return true;
+}

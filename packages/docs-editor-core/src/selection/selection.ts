@@ -9,6 +9,11 @@
  *
  * - `"text"` (the default when omitted) — an ordinary linear text selection;
  *   `anchor`/`head` are text positions.
+ * - `"node"` — a whole node selected as a unit (e.g. clicking an image or
+ *   divider). `anchor` is the position directly *before* the node and `head`
+ *   the position directly *after* it, so `selectionFrom`/`selectionTo` bracket
+ *   the node. Reconstructed by resolving `anchor` to a selectable node; setting
+ *   a `"node"` selection whose `anchor` doesn't point at one fails predictably.
  * - `"cell"` — a rectangular table-cell selection; `anchor`/`head` point at
  *   the anchor and head *cells* (each is the position directly before a
  *   cell), not text offsets. Produced by the engine's table support when the
@@ -24,7 +29,7 @@
 export interface Selection {
   readonly anchor: number;
   readonly head: number;
-  readonly type?: "text" | "cell";
+  readonly type?: "text" | "node" | "cell";
 }
 
 /** The lower bound of the selection's range. */

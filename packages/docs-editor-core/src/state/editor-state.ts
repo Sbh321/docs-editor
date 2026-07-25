@@ -15,6 +15,7 @@ import {
   engineTransactionPaste,
   engineTransactionRemoveMark,
   engineTransactionScrollIntoView,
+  engineTransactionSelectNode,
   engineTransactionSelection,
   engineTransactionSetSelection,
 } from "../engine";
@@ -120,6 +121,18 @@ export class Transaction<NodeName extends string = string, MarkName extends stri
   /** Overrides the selection this transaction will produce when applied. */
   setSelection(selection: Selection): this {
     engineTransactionSetSelection(this.engine, selection);
+    return this;
+  }
+
+  /**
+   * Selects the whole node at `pos` (the position directly before it) as a
+   * unit — e.g. selecting an image or divider so it can be replaced or deleted
+   * with {@link import("../commands").deleteSelection}. `pos` must point at a
+   * selectable node, or this fails with an actionable error. The resulting
+   * selection reads back as `{ type: "node" }`.
+   */
+  selectNode(pos: number): this {
+    engineTransactionSelectNode(this.engine, pos);
     return this;
   }
 

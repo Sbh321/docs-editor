@@ -3,6 +3,7 @@ import {
   runEngineExitCode,
   runEngineLift,
   runEngineNewlineInCode,
+  runEngineRemoveFormatting,
   runEngineSelectAll,
   runEngineSetBlockType,
   runEngineToggleMark,
@@ -98,6 +99,18 @@ export function exitCode<NodeName extends string = string, MarkName extends stri
  * against that state's real schema at call time, throwing `UnknownMarkTypeError`
  * for a genuinely invalid name.
  */
+/**
+ * Removes every mark from the current selection — the "clear formatting"
+ * action. Reports `false` when the selection is empty (there's no range to
+ * clear). See {@link deleteSelection} for why this is generic.
+ */
+export function removeFormatting<
+  NodeName extends string = string,
+  MarkName extends string = string,
+>(state: EditorState<NodeName, MarkName>, dispatch?: Dispatch<NodeName>): boolean {
+  return runEngineRemoveFormatting(state.engine, adaptDispatch(dispatch));
+}
+
 export function toggleMark(markType: string, attrs?: Record<string, unknown>) {
   return <NodeName extends string = string, MarkName extends string = string>(
     state: EditorState<NodeName, MarkName>,

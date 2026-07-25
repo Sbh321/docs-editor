@@ -88,8 +88,10 @@ export function App() {
   `markRenderers`/`keymap` are read once, at mount, the same as `dispatch` —
   an inline object literal here won't force-remount the view on every
   render. `keymap` maps key-combo strings to `Command`s, e.g.
-  `{ "Mod-b": toggleMark("bold"), "Mod-z": undo }` — see
-  `@sbh321/docs-editor-core`'s README for the key-string format.
+  `{ ...baseKeymap, "Mod-b": toggleMark("bold"), "Mod-z": undo }`. Spread
+  `baseKeymap` (from `@sbh321/docs-editor-core`) to get the essential editing
+  bindings — Enter splits, Backspace/Delete join — so the editor works out of
+  the box; see that package's README for the key-string format.
 
 All hooks throw a descriptive error if called outside an `EditorProvider`.
 

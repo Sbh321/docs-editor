@@ -174,6 +174,12 @@ function compileMarkSpec(name: string, markSpec: MarkSpec): ProseMirrorMarkSpec 
   if (attrs !== undefined) {
     compiled.attrs = attrs;
   }
+  if (markSpec.inclusive !== undefined) {
+    compiled.inclusive = markSpec.inclusive;
+  }
+  if (markSpec.excludes !== undefined) {
+    compiled.excludes = markSpec.excludes;
+  }
   return compiled;
 }
 

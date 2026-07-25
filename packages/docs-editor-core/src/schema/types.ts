@@ -61,6 +61,20 @@ export interface NodeSpec {
 /** Declares one mark type in a {@link SchemaSpec}. */
 export interface MarkSpec {
   readonly attrs?: Readonly<Record<string, AttributeSpec>>;
+  /**
+   * Whether the mark extends onto content inserted at its end. `true` (the
+   * default) is right for most formatting (typing at the end of bold text
+   * stays bold); set `false` for marks that shouldn't grow this way — a link,
+   * so typing just past it isn't part of the link.
+   */
+  readonly inclusive?: boolean;
+  /**
+   * Which marks this one excludes, as a space-separated list of mark type
+   * names (or `"_"` for *all* other marks). A mark always excludes itself, so
+   * applying it replaces an existing one of the same type. Use `"_"` for an
+   * inline `code` mark so it can't combine with bold/italic/etc.
+   */
+  readonly excludes?: string;
 }
 
 /** The full set of node and mark types a {@link Schema} enforces. */

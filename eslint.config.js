@@ -34,6 +34,7 @@ export default tseslint.config(
       "**/vite.config.ts",
       "**/playwright.config.ts",
       "**/.storybook/*.ts",
+      "**/stories/**/*.{ts,tsx}",
       "**/e2e/**/*.ts",
       "commitlint.config.js",
       "tooling/**/*.js",

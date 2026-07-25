@@ -1,4 +1,4 @@
-import { EditorState as ProseMirrorEditorState } from "prosemirror-state";
+import { EditorState as ProseMirrorEditorState, NodeSelection } from "prosemirror-state";
 
 import { EngineConversionError } from "../errors";
 
@@ -141,6 +141,11 @@ export function engineTransactionSetSelection(
 /** Flags the transaction to scroll its selection into view when the view dispatches it. */
 export function engineTransactionScrollIntoView(transaction: EngineTransaction): void {
   transaction.scrollIntoView();
+}
+
+/** Selects the whole node at `pos` (the position directly before it) as a unit. */
+export function engineTransactionSelectNode(transaction: EngineTransaction, pos: number): void {
+  transaction.setSelection(NodeSelection.create(transaction.doc, pos));
 }
 
 export function engineTransactionAddMark(

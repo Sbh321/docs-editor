@@ -1021,6 +1021,160 @@ v0.4.0
 
 ---
 
+# Phase 4.5 — Polish & Foundation Gaps
+
+Status:
+
+Complete
+
+Objective:
+
+Close the gaps between what `docs/ARCHITECTURE.md` and `docs/PROJECT_SPEC.md`
+promise for the foundation (Phases 0–4) and what was actually built — the
+"professional editing" polish that makes the editor feel finished — before
+moving on to Import & Export (Phase 5). This is a *consolidation* phase: no new
+architectural direction, just filling documented-but-missing capabilities.
+
+Scope discipline: this phase fixes **foundational gaps** (things the editor
+should already do), not aspirational features. Net-new features named in
+PROJECT_SPEC's "Editing Capabilities" that are genuinely later work stay
+deferred (see "Deliberately deferred" below).
+
+## Gap analysis (docs vs. implementation)
+
+Scanning ARCHITECTURE.md and PROJECT_SPEC.md against the Phase 0–4 code
+surfaced these as real gaps:
+
+- **Essential editing keymap is missing.** Only a subset of `prosemirror-
+  commands` is wrapped (`toggleMark`, `setBlockType`, `wrapIn`, `lift`,
+  `deleteSelection`, `selectAll`, `newlineInCode`, `exitCode`). The commands
+  that make a text editor behave like one — `splitBlock` (Enter), `joinBackward`/
+  `joinForward` (Backspace/Delete at a boundary), `selectNodeBackward`/
+  `selectNodeForward`, `liftEmptyBlock`, `createParagraphNear`,
+  `selectParentNode` — don't exist, and there's no ready-made base keymap. Today
+  pressing **Enter in a paragraph doesn't split it** and Backspace doesn't join
+  blocks. Contradicts ARCHITECTURE.md's "Keyboard-first editing" and
+  PROJECT_SPEC's "native, familiar" design goals.
+- **Selection is incomplete.** ARCHITECTURE.md's Selection System lists "Block
+  selection"; `Selection` only models `"text"` and `"cell"`. A `NodeSelection`
+  (clicking an atomic leaf like an image or divider) isn't representable, so
+  selecting/deleting such a node as a unit isn't supported.
+- **`MarkSpec` is under-modeled.** It exposes only `attrs` — no `inclusive`,
+  `excludes`, or `code`. So a link is "inclusive" (typing at its end extends
+  it), and there's no real inline-code mark. A professional editor needs these.
+- **No "Remove Formatting".** PROJECT_SPEC lists it; there's no
+  `removeFormatting` command.
+- **The standard text-formatting marks aren't demonstrated.** PROJECT_SPEC's
+  Text Formatting lists bold, italic, underline, strike, highlight, inline
+  code; only bold and link exist. Icons for the rest already ship in
+  `@sbh321/docs-editor-icons`, but nothing wires them up.
+- **Storybook is unused.** Phase 0 set up Storybook "for component
+  documentation"; only an `Introduction.mdx` exists — no stories for the Phase 4
+  headless UI.
+
+## Milestone 4.5.1 — Essential editing commands + base keymap (core)
+
+The highest-value gap. Wrap the remaining first-party `prosemirror-commands`
+(same encapsulation rule as every other engine wrapper) and ship a ready-made
+keymap so the editor works out of the box.
+
+- New commands in `src/commands/`: `splitBlock`, `joinBackward`, `joinForward`,
+  `joinUp`, `joinDown`, `liftEmptyBlock`, `createParagraphNear`,
+  `selectNodeBackward`, `selectNodeForward`, `selectParentNode` — each wrapping
+  its `prosemirror-commands` counterpart via a new
+  `src/engine/prosemirror/base-commands.ts`.
+- **`baseKeymap`** — a `Record<string, Command>` adapting `prosemirror-commands`'
+  own `baseKeymap` (its exact, cross-platform, well-tested bindings for Enter,
+  Backspace, Delete, Mod-a, etc.), exposed as docs-editor `Command`s so a
+  consumer gets a working editor from one line: `keymap={{ ...baseKeymap, ...my
+  bindings }}`.
+- Wire into the playground: replace the ad-hoc Enter binding with `baseKeymap`
+  plus the list/code overrides. New e2e proving Enter splits a paragraph,
+  Backspace joins, and Enter in an empty list item exits the list.
+
+## Milestone 4.5.2 — Node / block selection (core)
+
+- `Selection.type` gains `"node"`; `selection-conversion.ts` builds and reads a
+  `NodeSelection` for it (addressed by the position *before* the node).
+- A `Transaction.selectNode(pos)` helper (and the base keymap's
+  `selectNodeBackward`/`-Forward` from 4.5.1) let a leaf node be selected and
+  deleted as a unit.
+- Verified: clicking an image/divider round-trips as `type: "node"`, and
+  Backspace deletes the selected node.
+
+## Milestone 4.5.3 — Mark expressiveness, formatting marks & remove-formatting (core + example)
+
+- Extend `MarkSpec` with `inclusive?` and `excludes?`, propagated by
+  `compileMarkSpec`. Link becomes non-inclusive (`inclusive: false`); an inline
+  `code` mark uses `excludes: "_"` so it can't combine with the others.
+- `removeFormatting` command — clears every mark across the selection (PM's
+  `tr.removeMark(from, to, null)`), reported `false` when there's nothing to
+  clear.
+- Demonstrate the full inline set in the playground schema + toolbar: `italic`,
+  `underline`, `strikethrough`, inline `code`, `highlight` (reusing the existing
+  icons), each with active-state buttons and shortcuts (`Mod-i`, `Mod-u`, …).
+
+## Milestone 4.5.4 — Storybook component documentation (react)
+
+- Stories for the Phase 4 headless UI (`Toolbar`/`ToolbarButton`,
+  `FloatingToolbar`, `SlashMenu`, `ContextMenu`, `OutlinePanel`/
+  `TableOfContents`, `ZoomControls`, `ThemeProvider`) plus the icon set, so
+  `pnpm storybook` documents the components with live, themeable examples —
+  delivering the Phase 0 "Storybook for component documentation" promise.
+
+## Milestone 4.5.5 — Accessibility & diagnostics pass (cross-cutting)
+
+- Audit ARIA/roles/labels across all Phase 4 components; add any missing
+  accessible names and `focus-visible` affordances.
+- Respect `prefers-reduced-motion` in any transitions the examples add;
+  document that the headless components ship no motion of their own.
+- Confirm errors stay actionable (schema/engine/command diagnostics) and add
+  regression tests for any gap found.
+
+## Deliberately deferred (aspirational features, not foundational gaps)
+
+These are named in PROJECT_SPEC's "Editing Capabilities" but are net-new
+features rather than gaps in the 0–4 foundation, and belong to a later phase or
+"Future Exploration":
+
+- Font color / background color, and paragraph formatting (alignment, line
+  height, indentation, spacing, direction) — node/mark *attributes* + commands;
+  a feature milestone of their own.
+- Task lists / checklists, page breaks, super/subscript, syntax highlighting —
+  additional node/mark types, added when there's a concrete need.
+- HTML / Markdown / PDF import-export and paste sanitization — **Phase 5**.
+- Multi-selection — noted "Future" in the Selection System.
+- Plugin/event system — **Phase 9**. Storage adapters — **Phase 7**.
+
+Milestone 4.5.5 note: an accessibility audit found the Phase 4 components
+already sound — `role`/`aria-*` correct, roving focus, focus trapping, keyboard
+dismissal — so no component changes were needed. The components ship no motion
+of their own (so nothing ignores `prefers-reduced-motion`), and the playground
+adds `:focus-visible` outlines and a reduced-motion guard as the *app's*
+styling. One documented simplification: `SlashMenu` keeps focus in the editor
+while filtering (a lightweight `role="listbox"` of `option` buttons) rather than
+implementing the full ARIA combobox pattern — a reasonable headless baseline.
+
+Exit Criteria:
+
+- The editor behaves like a text editor out of the box (Enter splits, Backspace
+  joins, Delete works) with a single `baseKeymap` ✅
+- Atomic nodes can be selected and deleted as a unit ✅ (`Selection` type
+  `"node"`, `Transaction.selectNode`, click-to-select round-trip)
+- Links don't over-extend; a full inline-formatting set (italic, underline,
+  strikethrough, inline code, highlight) plus `removeFormatting` works, with
+  active-state UI ✅
+- Phase 4 UI components are documented in Storybook ✅ (Toolbar, Floating UI,
+  Navigation, Zoom, Icons — `build-storybook` passes)
+- No accessibility regressions; all packages build, lint, typecheck, and test
+  clean ✅
+
+Target Version:
+
+v0.4.1
+
+---
+
 # Phase 5 — Import & Export
 
 Status:

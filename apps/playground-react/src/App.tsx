@@ -1,7 +1,9 @@
 import {
   addColumnAfter,
   addRowAfter,
+  baseKeymap,
   chainCommands,
+  createParagraphNear,
   createSchema,
   deleteColumn,
   deleteRow,
@@ -10,13 +12,16 @@ import {
   exitCode,
   findText,
   lift,
+  liftEmptyBlock,
   liftListItem,
   mergeCells,
   newlineInCode,
   redo,
+  removeFormatting,
   selectionTo,
   setBlockType,
   sinkListItem,
+  splitBlock,
   splitListItem,
   toggleHeaderRow,
   toggleMark,
@@ -72,7 +77,7 @@ type NodeName =
   | "table_cell"
   | "table_header"
   | "text";
-type MarkName = "bold" | "link";
+type MarkName = "bold" | "italic" | "underline" | "strikethrough" | "code" | "highlight" | "link";
 
 const IMAGE_SRC = "https://placekitten.com/200/120";
 
@@ -111,7 +116,14 @@ const schema = createSchema({
   },
   marks: {
     bold: {},
-    link: { attrs: { href: {} } },
+    italic: {},
+    underline: {},
+    strikethrough: {},
+    // Inline code excludes all other marks (can't be bold-and-code at once).
+    code: { excludes: "_" },
+    highlight: {},
+    // Non-inclusive: typing just past a link isn't part of the link.
+    link: { attrs: { href: {} }, inclusive: false },
   },
 });
 
@@ -213,16 +225,19 @@ function createInitialState() {
 /** A formatting button whose pressed state tracks whether the mark is active. */
 function MarkButton(props: {
   readonly mark: MarkName;
-  readonly iconName: string;
+  readonly iconName?: string;
   readonly label: string;
 }) {
+  const active = useIsMarkActive<NodeName, MarkName>(props.mark);
   return (
     <ToolbarButton
       command={toggleMark(props.mark)}
-      active={useIsMarkActive(props.mark)}
-      iconName={props.iconName}
+      active={active}
       label={props.label}
-    />
+      {...(props.iconName ? { iconName: props.iconName } : {})}
+    >
+      {props.iconName ? undefined : props.label.replace(/^Toggle /, "")}
+    </ToolbarButton>
   );
 }
 
@@ -261,6 +276,14 @@ function MainToolbar() {
       <ToolbarSeparator />
       <ToolbarGroup label="Text">
         <MarkButton mark="bold" iconName="bold" label="Toggle bold" />
+        <MarkButton mark="italic" iconName="italic" label="Toggle italic" />
+        <MarkButton mark="underline" iconName="underline" label="Toggle underline" />
+        <MarkButton mark="strikethrough" iconName="strikethrough" label="Toggle strikethrough" />
+        <MarkButton mark="code" iconName="code" label="Toggle inline code" />
+        <MarkButton mark="highlight" label="Toggle highlight" />
+        <ToolbarButton command={removeFormatting} label="Clear formatting">
+          Clear
+        </ToolbarButton>
       </ToolbarGroup>
       <ToolbarSeparator />
       <ToolbarGroup label="Blocks">
@@ -483,13 +506,37 @@ function EditorWorkspace() {
             }}
             markRenderers={{
               bold: () => ["strong", 0],
+              italic: () => ["em", 0],
+              underline: () => ["u", 0],
+              strikethrough: () => ["s", 0],
+              code: () => ["code", 0],
+              highlight: () => ["mark", 0],
               link: (mark) => ["a", { href: String(mark.attrs.href) }, 0],
             }}
             keymap={{
+              // The base keymap first (Backspace/Delete join & delete, Mod-a,
+              // Escape selects the parent, …), then our overrides. Enter chains
+              // the code-block and list behaviours ahead of the base Enter
+              // (createParagraphNear → liftEmptyBlock → splitBlock), so Enter
+              // splits a paragraph, creates a new list item, exits an empty list
+              // item, and inserts a newline in a code block — all as expected.
+              ...baseKeymap,
               "Mod-b": toggleMark("bold"),
+              "Mod-i": toggleMark("italic"),
+              "Mod-u": toggleMark("underline"),
+              "Mod-Shift-x": toggleMark("strikethrough"),
+              "Mod-e": toggleMark("code"),
+              "Mod-Shift-h": toggleMark("highlight"),
+              "Mod-\\": removeFormatting,
               "Mod-z": undo,
               "Shift-Mod-z": redo,
-              Enter: chainCommands(newlineInCode, splitListItem("list_item")),
+              Enter: chainCommands(
+                newlineInCode,
+                splitListItem("list_item"),
+                liftEmptyBlock,
+                createParagraphNear,
+                splitBlock,
+              ),
               "Mod-Enter": exitCode,
               Tab: sinkListItem("list_item"),
               "Shift-Tab": liftListItem("list_item"),

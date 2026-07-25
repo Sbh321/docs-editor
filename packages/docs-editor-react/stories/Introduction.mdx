@@ -4,7 +4,27 @@ import { Meta } from "@storybook/addon-docs/blocks";
 
 # Docs Editor React
 
-This package is currently scaffolding only — no components exist yet.
+Headless, framework-agnostic UI for [Docs Editor](../../../README.md), built on
+`@sbh321/docs-editor-react`.
 
-Component stories will be added alongside the Editor component and hooks in
-[Phase 2 — React Adapter](../../../docs/ROADMAP.md#phase-2--react-adapter).
+Every component here is **behavior only** — unstyled, `role`-correct, and driven
+by `className`/render props and an optional theme. The stories in this Storybook
+theme the components with a small demo stylesheet and the default icon set from
+`@sbh321/docs-editor-icons`; nothing here is required to use the components.
+
+## Components
+
+- **Toolbar** — a roving-tabindex `role="toolbar"` with buttons that reflect
+  active state (see _Components/Toolbar_, including an unstyled variant).
+- **Floating UI** — `FloatingToolbar` (over a selection), `SlashMenu` (`/`
+  trigger), and `ContextMenu` (right-click), all anchored to the live editor.
+- **Navigation** — `OutlinePanel` and `TableOfContents`, built on `useOutline`.
+- **Zoom** — `ZoomControls` backed by `ZoomProvider`.
+- **Icons** — the optional default icon set.
+
+Each interactive story mounts a real editor (`EditorProvider` + `<Editor />`),
+so the controls operate on an actual document — select text, type `/`, or
+right-click to try them.
+
+See [docs/ROADMAP.md](../../../docs/ROADMAP.md) (Phase 4 — User Interface) for
+the full component list and design rationale.

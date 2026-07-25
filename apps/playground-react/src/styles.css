@@ -101,6 +101,22 @@ body {
   background: var(--pg-muted);
 }
 
+/* Keyboard-focus affordance (the headless components ship none — styling is the app's). */
+.pg-toolbar-button:focus-visible,
+.pg-zoom-button:focus-visible,
+.pg-outline button:focus-visible,
+.pg-toc button:focus-visible {
+  outline: 2px solid var(--pg-accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .pg-toolbar-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
@@ -305,6 +321,20 @@ body {
   padding: 10px 12px;
   border-radius: 6px;
   overflow-x: auto;
+}
+
+/* Inline code (a code mark), scoped so it doesn't hit code blocks (<pre><code>). */
+.playground-editor :not(pre) > code {
+  background: var(--pg-muted);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+.playground-editor mark {
+  background: #fef08a;
+  border-radius: 2px;
 }
 
 .playground-editor table {

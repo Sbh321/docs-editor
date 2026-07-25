@@ -3,6 +3,20 @@
 // module, never part of docs-editor-core's public API. See
 // docs/ARCHITECTURE.md's "Editing Engine" section.
 export { EngineConversionError, EngineSchemaError } from "./errors";
+export {
+  getEngineBaseKeymap,
+  runEngineCreateParagraphNear,
+  runEngineJoinBackward,
+  runEngineJoinDown,
+  runEngineJoinForward,
+  runEngineJoinUp,
+  runEngineLiftEmptyBlock,
+  runEngineSelectNodeBackward,
+  runEngineSelectNodeForward,
+  runEngineSelectParentNode,
+  runEngineSplitBlock,
+} from "./prosemirror/base-commands";
+export type { EngineCommand } from "./prosemirror/base-commands";
 export { engineStateCopy, engineTransactionPaste } from "./prosemirror/clipboard";
 export { compileEngineSchema } from "./prosemirror/compile-schema";
 export { fromEngineNode, toEngineNode } from "./prosemirror/node-conversion";
@@ -12,6 +26,7 @@ export {
   runEngineExitCode,
   runEngineLift,
   runEngineNewlineInCode,
+  runEngineRemoveFormatting,
   runEngineSelectAll,
   runEngineSetBlockType,
   runEngineToggleMark,
@@ -53,6 +68,7 @@ export {
   engineTransactionInsertText,
   engineTransactionRemoveMark,
   engineTransactionScrollIntoView,
+  engineTransactionSelectNode,
   engineTransactionSelection,
   engineTransactionSetSelection,
 } from "./prosemirror/state";

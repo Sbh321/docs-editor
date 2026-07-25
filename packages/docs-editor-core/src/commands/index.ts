@@ -1,8 +1,22 @@
 export {
+  baseKeymap,
+  createParagraphNear,
+  joinBackward,
+  joinDown,
+  joinForward,
+  joinUp,
+  liftEmptyBlock,
+  selectNodeBackward,
+  selectNodeForward,
+  selectParentNode,
+  splitBlock,
+} from "./base-commands";
+export {
   deleteSelection,
   exitCode,
   lift,
   newlineInCode,
+  removeFormatting,
   selectAll,
   setBlockType,
   toggleMark,
