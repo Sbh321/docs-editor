@@ -35,7 +35,12 @@ test("typing directly into the rendered editor updates the document", async ({ p
 
   const editable = page.locator(".playground-editor [contenteditable='true']");
   await editable.click();
+  // Short waits after real key events: ProseMirror learns of the new selection
+  // asynchronously (via selectionchange), so acting immediately can race it —
+  // see the fuller note on the list-editing test below.
+  await page.waitForTimeout(50);
   await page.keyboard.press("Home");
+  await page.waitForTimeout(50);
   await page.keyboard.type("Typed! ");
 
   await expect(editable).toContainText("Typed! Hello, Docs Editor.");

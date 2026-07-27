@@ -464,6 +464,8 @@ Transient UI state:
 - Dialogs
 - Floating toolbars
 - Search panel
+- Zoom
+- Page layout (size, orientation, margins, header/footer, page numbers)
 
 Application state:
 
@@ -475,6 +477,17 @@ Application state:
 Only the first category belongs inside docs-editor-core.
 
 UI state belongs to framework adapters.
+
+**Page layout** is transient presentation state — *how* a document is displayed
+and printed, not *what* it contains — so it lives with the adapter
+(`PageLayoutProvider`), never in the document model. The core contributes only
+framework-agnostic **page primitives** (`page-layout`: sizes, orientation,
+margins, `resolvePageDimensions`), consumed by both the print exporter and the
+React page view. Live pagination flows content across sheets using **node
+decorations** (a block-level `margin-top`) — visual overlays, not document
+edits — composed under their own decoration source so they coexist with search
+highlighting. The editor therefore stays a single contenteditable, keeping
+selection, undo, and IME intact.
 
 Application state belongs to the consuming application.
 
@@ -630,6 +643,61 @@ Importers translate external formats into the document model.
 Exporters translate the document model into external formats.
 
 No external format should become the canonical representation.
+
+## Implemented contracts (Phase 5)
+
+Every format is expressed through two symmetric contracts in
+`docs-editor-core`, so a new format is additive and never touches the core:
+
+- `DocumentExporter<NodeName, Output = string>` — `{ format; serialize(doc): Output }`
+- `DocumentImporter<NodeName, Input = string, Result = DocumentNode<NodeName>>` — `{ format; parse(input: Input): Result }`
+
+The payload type parameters default to `string`/`DocumentNode`, so text formats
+(JSON, HTML, Markdown) and the synchronous registry are unchanged. Binary and/or
+asynchronous formats parameterize them instead — e.g. DOCX is a
+`DocumentExporter<NodeName, Promise<Uint8Array>>` and a
+`DocumentImporter<NodeName, ArrayBuffer, Promise<DocumentNode>>`. One contract
+shape, honest about each format's payload.
+
+`SerializationRegistry` holds exporters/importers keyed by `format` and exposes
+`export(format, doc)` / `import(format, input)` (plus `has*`/`*Formats`
+introspection), rejecting duplicate or unknown formats with actionable errors.
+This is the plugin surface for serialization — registration is explicit, never
+automatic.
+
+Shipped implementations:
+
+- **JSON** (`JsonExporter` / `JsonImporter`) — wraps `DocumentSerializer`;
+  round-trips the native model exactly. Import rebuilds every node/mark through
+  the schema, so untrusted JSON is validated, not trusted.
+- **HTML** (`HtmlExporter` / `HtmlImporter`) — export reuses the view's
+  `DOMOutputSpec` renderer maps, so exported markup matches what's rendered.
+  Import is the inverse: an `HtmlParseSpec` (tag → node/mark rules, where
+  `getAttrs` may return `null` to decline a match) drives parsing **after**
+  sanitization — the HTML is loaded into an inert document, dangerous elements
+  and `on*`/`javascript:`-style attributes are stripped, and the result is
+  rebuilt through the schema. Arbitrary HTML is never executed. This is also
+  what lets external paste (Google Docs, Word, web pages) map into the model.
+- **Markdown** (`@sbh321/docs-editor-markdown`, separate package) — works over
+  the **public** `DocumentNode` + `Schema` API (it cannot use
+  `prosemirror-markdown`, which needs the hidden compiled schema). Export walks
+  the plain tree; import tokenizes with `markdown-it` (`html: false`) and
+  rebuilds through the schema. Intentionally lossy within Markdown's
+  expressiveness, with the lossy cases tested, not hidden.
+- **Print / PDF** (`PrintExporter`) — wraps `HtmlExporter` to emit a complete,
+  standalone HTML document with an embedded print stylesheet, suitable for
+  `window.print()` (browser print-to-PDF). Generated from the model, so it
+  carries no editor chrome. A programmatic PDF package is a deferred follow-up.
+- **DOCX** (`@sbh321/docs-editor-docx`, separate package) — the first binary +
+  async format, exercising the generalized contracts. Export maps the model onto
+  the `docx` library (`Promise<Uint8Array>`); import runs `.docx` bytes through
+  `mammoth` (→ HTML) and then the core `HtmlImporter`, so it inherits that path's
+  sanitization and schema validation instead of adding a second parsing surface.
+  Not in the sync `SerializationRegistry` (it's binary/async) — used directly.
+
+Deferred (contracts are shaped to allow them): ODT/RTF/EPUB formats,
+streaming/chunked execution for very large documents, and a programmatic PDF
+package.
 
 ---
 

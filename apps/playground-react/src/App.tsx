@@ -11,15 +11,22 @@ import {
   EditorState,
   exitCode,
   findText,
+  HtmlExporter,
+  HtmlImporter,
+  JsonExporter,
+  JsonImporter,
   lift,
   liftEmptyBlock,
   liftListItem,
   mergeCells,
   newlineInCode,
+  PrintExporter,
   redo,
   removeFormatting,
   selectionTo,
+  SerializationRegistry,
   setBlockType,
+  setMark,
   sinkListItem,
   splitBlock,
   splitListItem,
@@ -30,6 +37,7 @@ import {
   wrapInList,
 } from "@sbh321/docs-editor-core";
 import { defaultIcons } from "@sbh321/docs-editor-icons";
+import { MarkdownExporter, MarkdownImporter } from "@sbh321/docs-editor-markdown";
 import {
   ContextMenu,
   ContextMenuItem,
@@ -37,6 +45,9 @@ import {
   EditorProvider,
   FloatingToolbar,
   OutlinePanel,
+  PageLayoutProvider,
+  PageSetupControls,
+  PageSurface,
   SlashMenu,
   TableOfContents,
   ThemeProvider,
@@ -44,19 +55,30 @@ import {
   ToolbarButton,
   ToolbarGroup,
   ToolbarSeparator,
+  useActiveMarks,
   useEditor,
+  useEditorView,
   useIsBlockActive,
   useIsMarkActive,
+  usePageLayout,
   useSearchHighlight,
   useZoom,
   ZoomControls,
   ZoomProvider,
 } from "@sbh321/docs-editor-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { DocumentPreview } from "./DocumentPreview";
 
-import type { Command, DocumentNode, Schema } from "@sbh321/docs-editor-core";
+import type {
+  Command,
+  DocumentNode,
+  HtmlParseSpec,
+  MarkRenderer,
+  NodeRenderer,
+  PageLayout,
+  Schema,
+} from "@sbh321/docs-editor-core";
 import type { EditorTheme, SlashMenuItem } from "@sbh321/docs-editor-react";
 
 type NodeName =
@@ -77,7 +99,43 @@ type NodeName =
   | "table_cell"
   | "table_header"
   | "text";
-type MarkName = "bold" | "italic" | "underline" | "strikethrough" | "code" | "highlight" | "link";
+type MarkName =
+  | "bold"
+  | "italic"
+  | "underline"
+  | "strikethrough"
+  | "code"
+  | "highlight"
+  | "link"
+  | "font_family"
+  | "text_color";
+
+const DEFAULT_TEXT_COLOR = "#111111";
+const DEFAULT_HIGHLIGHT_COLOR = "#fef08a";
+
+/**
+ * Web-safe font families users expect, each with a fallback stack so it renders
+ * everywhere. The `family` mark attr stores the full stack; Arial is the base
+ * font (see `.playground-editor` in styles.css) and the default selection.
+ */
+const FONT_FAMILIES: readonly { readonly label: string; readonly value: string }[] = [
+  { label: "Arial", value: "Arial, Helvetica, sans-serif" },
+  { label: "Helvetica", value: "Helvetica, Arial, sans-serif" },
+  { label: "Times New Roman", value: '"Times New Roman", Times, serif' },
+  { label: "Georgia", value: "Georgia, serif" },
+  { label: "Garamond", value: "Garamond, serif" },
+  { label: "Calibri", value: "Calibri, Candara, Segoe, sans-serif" },
+  { label: "Cambria", value: "Cambria, Georgia, serif" },
+  { label: "Verdana", value: "Verdana, Geneva, sans-serif" },
+  { label: "Tahoma", value: "Tahoma, Geneva, sans-serif" },
+  { label: "Trebuchet MS", value: '"Trebuchet MS", Helvetica, sans-serif' },
+  { label: "Courier New", value: '"Courier New", Courier, monospace' },
+  { label: "Comic Sans MS", value: '"Comic Sans MS", "Comic Sans", cursive' },
+  { label: "Impact", value: "Impact, Charcoal, sans-serif" },
+  { label: "Palatino", value: '"Palatino Linotype", "Book Antiqua", Palatino, serif' },
+  { label: "Lucida Console", value: '"Lucida Console", Monaco, monospace' },
+];
+const DEFAULT_FONT = FONT_FAMILIES[0]?.value ?? "Arial, Helvetica, sans-serif";
 
 const IMAGE_SRC = "https://placekitten.com/200/120";
 
@@ -121,11 +179,203 @@ const schema = createSchema({
     strikethrough: {},
     // Inline code excludes all other marks (can't be bold-and-code at once).
     code: { excludes: "_" },
-    highlight: {},
+    // Highlight carries a background color; toggling uses the default.
+    highlight: { attrs: { color: { default: DEFAULT_HIGHLIGHT_COLOR } } },
     // Non-inclusive: typing just past a link isn't part of the link.
     link: { attrs: { href: {} }, inclusive: false },
+    // Carries a font-family stack; set (not toggled) via the core `setMark`.
+    font_family: { attrs: { family: { default: DEFAULT_FONT } } },
+    // Text color, set via `setMark`.
+    text_color: { attrs: { color: { default: DEFAULT_TEXT_COLOR } } },
   },
 });
+
+// The node/mark render maps are shared: the live `Editor` renders with them,
+// and the HTML/print exporters serialize with the *same* maps, so exported and
+// printed markup matches exactly what's on screen.
+const nodeRenderers: NodeRenderer<NodeName> = {
+  paragraph: () => ["p", 0],
+  heading: (node) => [`h${Number(node.attrs.level) || 1}`, 0],
+  blockquote: () => ["blockquote", 0],
+  bullet_list: () => ["ul", 0],
+  ordered_list: (node) => ["ol", { start: String(node.attrs.order) }, 0],
+  list_item: () => ["li", 0],
+  divider: () => ["hr"],
+  code_block: () => ["pre", ["code", 0]],
+  image: (node) => ["img", { src: String(node.attrs.src), alt: String(node.attrs.alt) }],
+  figure: () => ["figure", 0],
+  caption: () => ["figcaption", 0],
+  table: () => ["table", ["tbody", 0]],
+  table_row: () => ["tr", 0],
+  table_cell: (node) => [
+    "td",
+    { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
+    0,
+  ],
+  table_header: (node) => [
+    "th",
+    { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
+    0,
+  ],
+};
+
+const markRenderers: MarkRenderer<MarkName> = {
+  bold: () => ["strong", 0],
+  italic: () => ["em", 0],
+  underline: () => ["u", 0],
+  strikethrough: () => ["s", 0],
+  code: () => ["code", 0],
+  highlight: (mark) => ["mark", { style: `background-color: ${String(mark.attrs.color)}` }, 0],
+  link: (mark) => ["a", { href: String(mark.attrs.href) }, 0],
+  font_family: (mark) => ["span", { style: `font-family: ${String(mark.attrs.family)}` }, 0],
+  text_color: (mark) => ["span", { style: `color: ${String(mark.attrs.color)}` }, 0],
+};
+
+/**
+ * Builds a print-ready HTML document from the current doc and prints it in a
+ * detached window — the browser's print dialog then handles "Save as PDF". The
+ * print view is generated from the model (no editor chrome), so it prints as a
+ * clean report. See `PrintExporter`.
+ */
+function printDocument(doc: DocumentNode<NodeName>, pageLayout: PageLayout): void {
+  const html = new PrintExporter<NodeName, MarkName>({
+    schema,
+    nodeRenderers,
+    markRenderers,
+    title: "Docs Editor Document",
+    pageLayout,
+  }).serialize(doc);
+
+  // No `noopener` here: we need the returned reference to write the print
+  // document into the new window (`noopener` would sever it and return null).
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) {
+    return;
+  }
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  // Wait for layout/images so the printed output is complete.
+  printWindow.addEventListener("load", () => {
+    printWindow.focus();
+    printWindow.print();
+  });
+}
+
+// The inverse of `nodeRenderers`/`markRenderers`: maps DOM tags back to node
+// and mark types so pasted or imported HTML (including from Google Docs / Word)
+// rebuilds through the schema. `HtmlImporter` sanitizes before this runs, so
+// scripts and unsafe URLs never reach these rules.
+const htmlParseSpec: HtmlParseSpec<NodeName, MarkName> = {
+  nodes: [
+    { tag: "p", node: "paragraph" },
+    ...([1, 2, 3, 4, 5, 6] as const).map((level) => ({
+      tag: `h${level}`,
+      node: "heading" as const,
+      getAttrs: () => ({ level }),
+    })),
+    { tag: "blockquote", node: "blockquote" },
+    { tag: "ul", node: "bullet_list" },
+    { tag: "ol", node: "ordered_list" },
+    { tag: "li", node: "list_item" },
+    { tag: "hr", node: "divider" },
+    { tag: "pre", node: "code_block" },
+    { tag: "figure", node: "figure" },
+    { tag: "figcaption", node: "caption" },
+    {
+      tag: "img",
+      node: "image",
+      getAttrs: (el) => ({
+        src: el.getAttribute("src") ?? "",
+        alt: el.getAttribute("alt") ?? "",
+      }),
+    },
+  ],
+  marks: [
+    { tag: "strong", mark: "bold" },
+    { tag: "b", mark: "bold" },
+    { tag: "em", mark: "italic" },
+    { tag: "i", mark: "italic" },
+    { tag: "u", mark: "underline" },
+    { tag: "s", mark: "strikethrough" },
+    { tag: "del", mark: "strikethrough" },
+    { tag: "code", mark: "code" },
+    {
+      tag: "mark",
+      mark: "highlight",
+      getAttrs: (el) => {
+        const match = /background-color:\s*([^;]+)/i.exec(el.getAttribute("style") ?? "");
+        return match?.[1] ? { color: match[1].trim() } : {};
+      },
+    },
+    { tag: "a", mark: "link", getAttrs: (el) => ({ href: el.getAttribute("href") ?? "" }) },
+    {
+      tag: "span",
+      mark: "font_family",
+      // Only a span that actually declares a font-family becomes a font mark;
+      // returning null declines the match for any other span.
+      getAttrs: (el) => {
+        const match = /font-family:\s*([^;]+)/i.exec(el.getAttribute("style") ?? "");
+        return match?.[1] ? { family: match[1].trim() } : null;
+      },
+    },
+    {
+      tag: "span",
+      mark: "text_color",
+      // A `color:` not preceded by `-` (so it ignores `background-color`).
+      getAttrs: (el) => {
+        const match = /(?:^|;)\s*color:\s*([^;]+)/i.exec(el.getAttribute("style") ?? "");
+        return match?.[1] ? { color: match[1].trim() } : null;
+      },
+    },
+  ],
+};
+
+/**
+ * One registry wiring every format's importer and exporter — the same plugin
+ * surface a real app would use. JSON round-trips exactly; HTML and Markdown are
+ * faithful within their expressible features.
+ */
+const serializationRegistry = new SerializationRegistry<NodeName>()
+  .registerExporter(new JsonExporter<NodeName, MarkName>(schema))
+  .registerImporter(new JsonImporter<NodeName, MarkName>(schema))
+  .registerExporter(new HtmlExporter<NodeName, MarkName>({ schema, nodeRenderers, markRenderers }))
+  .registerImporter(new HtmlImporter<NodeName, MarkName>({ schema, parseSpec: htmlParseSpec }))
+  .registerExporter(new MarkdownExporter<NodeName>())
+  .registerImporter(new MarkdownImporter<NodeName, MarkName>(schema));
+
+type SerializationFormat = "json" | "html" | "markdown";
+
+/** Triggers a browser download of `bytes` as `filename`. */
+function downloadBytes(bytes: Uint8Array, filename: string, mimeType: string): void {
+  const blob = new Blob([bytes as BlobPart], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+/**
+ * DOCX is binary + async, so it isn't part of the sync string registry — it's
+ * handled directly. The `docx`/`mammoth` libraries are heavy, so they're loaded
+ * lazily via dynamic `import()`, keeping them out of the main bundle until the
+ * user actually exports or imports a `.docx`.
+ */
+async function exportDocx(doc: DocumentNode<NodeName>): Promise<void> {
+  const { DocxExporter } = await import("@sbh321/docs-editor-docx");
+  const bytes = await new DocxExporter<NodeName>().serialize(doc);
+  downloadBytes(bytes, "document.docx", DOCX_MIME);
+}
+
+async function importDocx(file: File): Promise<DocumentNode<NodeName>> {
+  const { DocxImporter } = await import("@sbh321/docs-editor-docx");
+  const importer = new DocxImporter<NodeName, MarkName>({ schema, parseSpec: htmlParseSpec });
+  return importer.parse(await file.arrayBuffer());
+}
 
 // Inserts, expressed as commands so they compose with the toolbar, slash menu,
 // and context menu the same way `toggleMark`/`setBlockType` do — there's no
@@ -171,6 +421,11 @@ const theme: EditorTheme = {
     zoomControls: "pg-zoom",
     zoomButton: "pg-zoom-button",
     zoomLabel: "pg-zoom-label",
+    pageCanvas: "pg-page-canvas",
+    page: "pg-page",
+    pageHeader: "pg-page-header",
+    pageFooter: "pg-page-footer",
+    pageSetup: "pg-page-setup",
   },
   tokens: { accent: "#2563eb" },
 };
@@ -241,6 +496,80 @@ function MarkButton(props: {
   );
 }
 
+/** A font-family dropdown that reflects and sets the active font via `setMark`. */
+function FontFamilySelect() {
+  const { state, dispatch } = useEditor<NodeName, MarkName>();
+  const view = useEditorView();
+  const activeMarks = useActiveMarks<NodeName, MarkName>();
+  const active = activeMarks.find((mark) => mark.type === "font_family");
+  const value = typeof active?.attrs.family === "string" ? active.attrs.family : DEFAULT_FONT;
+
+  return (
+    <select
+      aria-label="Font family"
+      className="pg-font-select"
+      value={value}
+      style={{ fontFamily: value }}
+      onChange={(event) => {
+        setMark("font_family", { family: event.target.value })(state, dispatch);
+        // Return focus to the editor so typing continues in the chosen font.
+        view?.focus();
+      }}
+    >
+      {FONT_FAMILIES.map((font) => (
+        <option key={font.label} value={font.value} style={{ fontFamily: font.value }}>
+          {font.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/** Reads a color-carrying mark's `color` attr, falling back if absent or non-hex. */
+function activeColor(
+  marks: readonly { readonly type: string; readonly attrs: Record<string, unknown> }[],
+  type: MarkName,
+  fallback: string,
+): string {
+  const color = marks.find((mark) => mark.type === type)?.attrs.color;
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? color : fallback;
+}
+
+/** Text-color and highlight-color pickers, applied with the core `setMark`. */
+function ColorControls() {
+  const { state, dispatch } = useEditor<NodeName, MarkName>();
+  const view = useEditorView();
+  const marks = useActiveMarks<NodeName, MarkName>();
+
+  const apply = (mark: MarkName, color: string) => {
+    setMark(mark, { color })(state, dispatch);
+    view?.focus();
+  };
+
+  return (
+    <>
+      <label className="pg-color-field" title="Text color">
+        <span aria-hidden="true">A</span>
+        <input
+          type="color"
+          aria-label="Text color"
+          value={activeColor(marks, "text_color", DEFAULT_TEXT_COLOR)}
+          onChange={(event) => apply("text_color", event.target.value)}
+        />
+      </label>
+      <label className="pg-color-field" title="Highlight color">
+        <span aria-hidden="true">▉</span>
+        <input
+          type="color"
+          aria-label="Highlight color"
+          value={activeColor(marks, "highlight", DEFAULT_HIGHLIGHT_COLOR)}
+          onChange={(event) => apply("highlight", event.target.value)}
+        />
+      </label>
+    </>
+  );
+}
+
 /** A block-style button whose pressed state tracks the active block type. */
 function BlockButton(props: {
   readonly nodeType: NodeName;
@@ -265,6 +594,7 @@ function BlockButton(props: {
 
 function MainToolbar() {
   const { state, dispatch } = useEditor<NodeName, MarkName>();
+  const { layout } = usePageLayout();
   const [href, setHref] = useState("https://docs-editor.example/");
 
   return (
@@ -272,6 +602,14 @@ function MainToolbar() {
       <ToolbarGroup label="History">
         <ToolbarButton command={undo} iconName="undo" label="Undo" />
         <ToolbarButton command={redo} iconName="redo" label="Redo" />
+      </ToolbarGroup>
+      <ToolbarSeparator />
+      <ToolbarGroup label="Font">
+        <FontFamilySelect />
+      </ToolbarGroup>
+      <ToolbarSeparator />
+      <ToolbarGroup label="Color">
+        <ColorControls />
       </ToolbarGroup>
       <ToolbarSeparator />
       <ToolbarGroup label="Text">
@@ -334,6 +672,12 @@ function MainToolbar() {
         <ToolbarButton command={insertTable} iconName="table" label="Insert table" />
         <ToolbarButton onClick={() => dispatch(state.tr.insertText("Hi! "))} label='Insert "Hi! "'>
           Hi!
+        </ToolbarButton>
+      </ToolbarGroup>
+      <ToolbarSeparator />
+      <ToolbarGroup label="Export">
+        <ToolbarButton onClick={() => printDocument(state.doc, layout)} label="Print / Export PDF">
+          Print
         </ToolbarButton>
       </ToolbarGroup>
       <ToolbarSeparator />
@@ -411,9 +755,143 @@ function FindReplace() {
   );
 }
 
-function EditorWorkspace() {
+/**
+ * Import/export controls for every registered format plus print. Export reads
+ * the live document; import replaces it with a freshly parsed, schema-validated
+ * document (see `App`'s `handleImport`).
+ */
+function ImportExportPanel(props: { readonly onImport: (doc: DocumentNode<NodeName>) => void }) {
+  const { state } = useEditor<NodeName, MarkName>();
+  const { layout } = usePageLayout();
+  const [format, setFormat] = useState<SerializationFormat>("json");
+  const [io, setIo] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function handleExport() {
+    try {
+      setIo(serializationRegistry.export(format, state.doc));
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  function handleImport() {
+    try {
+      props.onImport(serializationRegistry.import(format, io));
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  function report(cause: unknown) {
+    setError(cause instanceof Error ? cause.message : String(cause));
+  }
+
+  function handleExportDocx() {
+    exportDocx(state.doc).then(() => setError(null), report);
+  }
+
+  function handleImportDocx(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-picking the same file
+    if (!file) {
+      return;
+    }
+    importDocx(file).then((doc) => {
+      props.onImport(doc);
+      setError(null);
+    }, report);
+  }
+
+  return (
+    <div className="pg-panel pg-io-panel">
+      <h2>Import &amp; export</h2>
+      <label>
+        Format{" "}
+        <select
+          aria-label="Serialization format"
+          value={format}
+          onChange={(event) => setFormat(event.target.value as SerializationFormat)}
+        >
+          <option value="json">JSON</option>
+          <option value="html">HTML</option>
+          <option value="markdown">Markdown</option>
+        </select>
+      </label>
+      <div>
+        <button onClick={handleExport}>Export</button>
+        <button onClick={handleImport}>Import</button>
+        <button onClick={() => printDocument(state.doc, layout)}>Print / PDF</button>
+      </div>
+      <textarea
+        aria-label="Serialized document"
+        value={io}
+        onChange={(event) => setIo(event.target.value)}
+        rows={6}
+      />
+      <div>
+        <button onClick={handleExportDocx}>Export DOCX</button>
+        <label className="pg-docx-import">
+          Import DOCX{" "}
+          <input
+            aria-label="Import DOCX file"
+            type="file"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={handleImportDocx}
+          />
+        </label>
+      </div>
+      {error ? <p role="alert">{error}</p> : null}
+    </div>
+  );
+}
+
+/** Page-setup panel: the headless `PageSetupControls` plus header/footer text. */
+function PageSetupPanel(props: {
+  readonly paginate: boolean;
+  readonly onPaginateChange: (value: boolean) => void;
+}) {
+  const { layout, setHeader, setFooter } = usePageLayout();
+
+  return (
+    <div className="pg-panel">
+      <h2>Page setup</h2>
+      <PageSetupControls className="pg-page-setup" />
+      <label className="pg-field">
+        <input
+          type="checkbox"
+          aria-label="Live pagination"
+          checked={props.paginate}
+          onChange={(event) => props.onPaginateChange(event.target.checked)}
+        />{" "}
+        Live pagination (multi-page)
+      </label>
+      <label className="pg-field">
+        Header{" "}
+        <input
+          aria-label="Page header"
+          value={layout.header ?? ""}
+          onChange={(event) => setHeader(event.target.value)}
+        />
+      </label>
+      <label className="pg-field">
+        Footer{" "}
+        <input
+          aria-label="Page footer"
+          value={layout.footer ?? ""}
+          onChange={(event) => setFooter(event.target.value)}
+        />
+      </label>
+    </div>
+  );
+}
+
+function EditorWorkspace(props: { readonly onImport: (doc: DocumentNode<NodeName>) => void }) {
   const { state } = useEditor<NodeName, MarkName>();
   const { editorStyle } = useZoom();
+  const [paginate, setPaginate] = useState(true);
 
   return (
     <div className="pg-layout">
@@ -427,6 +905,8 @@ function EditorWorkspace() {
           <TableOfContents className="pg-toc" />
         </div>
         <FindReplace />
+        <PageSetupPanel paginate={paginate} onPaginateChange={setPaginate} />
+        <ImportExportPanel onImport={props.onImport} />
         <div className="pg-panel">
           <h2>Document (debug)</h2>
           <div className="document-preview">
@@ -445,6 +925,15 @@ function EditorWorkspace() {
           <code>TableOfContents</code> navigation, <code>ZoomControls</code>, and a headless{" "}
           <code>ThemeProvider</code> supplying the class names, tokens, and{" "}
           <code>@sbh321/docs-editor-icons</code> — all fully replaceable, styling optional.
+        </p>
+        <p>
+          Phase 5 import/export: the sidebar <strong>Import &amp; export</strong> panel drives a{" "}
+          <code>SerializationRegistry</code> over JSON, HTML (sanitized on import), and Markdown (
+          <code>@sbh321/docs-editor-markdown</code>), plus a <code>PrintExporter</code>-backed{" "}
+          <em>Print / PDF</em> action. Phase 5.7 adds binary <strong>DOCX</strong> (
+          <code>@sbh321/docs-editor-docx</code>) — export downloads a Word file, import reads one
+          through the sanitized HTML path — lazy-loaded so <code>docx</code>/<code>mammoth</code>{" "}
+          stay out of the main bundle.
         </p>
 
         <MainToolbar />
@@ -473,75 +962,41 @@ function EditorWorkspace() {
         </ContextMenu>
 
         <div className="pg-editor-frame">
-          <Editor
-            className="playground-editor"
-            style={editorStyle}
-            nodeRenderers={{
-              paragraph: () => ["p", 0],
-              heading: (node) => [`h${Number(node.attrs.level) || 1}`, 0],
-              blockquote: () => ["blockquote", 0],
-              bullet_list: () => ["ul", 0],
-              ordered_list: (node) => ["ol", { start: String(node.attrs.order) }, 0],
-              list_item: () => ["li", 0],
-              divider: () => ["hr"],
-              code_block: () => ["pre", ["code", 0]],
-              image: (node) => [
-                "img",
-                { src: String(node.attrs.src), alt: String(node.attrs.alt) },
-              ],
-              figure: () => ["figure", 0],
-              caption: () => ["figcaption", 0],
-              table: () => ["table", ["tbody", 0]],
-              table_row: () => ["tr", 0],
-              table_cell: (node) => [
-                "td",
-                { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
-                0,
-              ],
-              table_header: (node) => [
-                "th",
-                { colspan: String(node.attrs.colspan), rowspan: String(node.attrs.rowspan) },
-                0,
-              ],
-            }}
-            markRenderers={{
-              bold: () => ["strong", 0],
-              italic: () => ["em", 0],
-              underline: () => ["u", 0],
-              strikethrough: () => ["s", 0],
-              code: () => ["code", 0],
-              highlight: () => ["mark", 0],
-              link: (mark) => ["a", { href: String(mark.attrs.href) }, 0],
-            }}
-            keymap={{
-              // The base keymap first (Backspace/Delete join & delete, Mod-a,
-              // Escape selects the parent, …), then our overrides. Enter chains
-              // the code-block and list behaviours ahead of the base Enter
-              // (createParagraphNear → liftEmptyBlock → splitBlock), so Enter
-              // splits a paragraph, creates a new list item, exits an empty list
-              // item, and inserts a newline in a code block — all as expected.
-              ...baseKeymap,
-              "Mod-b": toggleMark("bold"),
-              "Mod-i": toggleMark("italic"),
-              "Mod-u": toggleMark("underline"),
-              "Mod-Shift-x": toggleMark("strikethrough"),
-              "Mod-e": toggleMark("code"),
-              "Mod-Shift-h": toggleMark("highlight"),
-              "Mod-\\": removeFormatting,
-              "Mod-z": undo,
-              "Shift-Mod-z": redo,
-              Enter: chainCommands(
-                newlineInCode,
-                splitListItem("list_item"),
-                liftEmptyBlock,
-                createParagraphNear,
-                splitBlock,
-              ),
-              "Mod-Enter": exitCode,
-              Tab: sinkListItem("list_item"),
-              "Shift-Tab": liftListItem("list_item"),
-            }}
-          />
+          <PageSurface style={editorStyle} paginate={paginate}>
+            <Editor
+              className="playground-editor"
+              nodeRenderers={nodeRenderers}
+              markRenderers={markRenderers}
+              keymap={{
+                // The base keymap first (Backspace/Delete join & delete, Mod-a,
+                // Escape selects the parent, …), then our overrides. Enter chains
+                // the code-block and list behaviours ahead of the base Enter
+                // (createParagraphNear → liftEmptyBlock → splitBlock), so Enter
+                // splits a paragraph, creates a new list item, exits an empty list
+                // item, and inserts a newline in a code block — all as expected.
+                ...baseKeymap,
+                "Mod-b": toggleMark("bold"),
+                "Mod-i": toggleMark("italic"),
+                "Mod-u": toggleMark("underline"),
+                "Mod-Shift-x": toggleMark("strikethrough"),
+                "Mod-e": toggleMark("code"),
+                "Mod-Shift-h": toggleMark("highlight"),
+                "Mod-\\": removeFormatting,
+                "Mod-z": undo,
+                "Shift-Mod-z": redo,
+                Enter: chainCommands(
+                  newlineInCode,
+                  splitListItem("list_item"),
+                  liftEmptyBlock,
+                  createParagraphNear,
+                  splitBlock,
+                ),
+                "Mod-Enter": exitCode,
+                Tab: sinkListItem("list_item"),
+                "Shift-Tab": liftListItem("list_item"),
+              }}
+            />
+          </PageSurface>
         </div>
       </main>
     </div>
@@ -561,13 +1016,25 @@ function FloatingLinkButton() {
 }
 
 export function App() {
-  const [initialState] = useState(createInitialState);
+  const [seed, setSeed] = useState(createInitialState);
+  // `EditorProvider` reads `initialState` only on mount, so loading an imported
+  // document means seeding a fresh state and remounting the provider via `key`.
+  // Importing a whole document *is* creating a new `EditorState` — the existing
+  // core primitive — rather than a bespoke "replace document" transaction.
+  const [instanceKey, setInstanceKey] = useState(0);
+
+  const handleImport = useCallback((doc: DocumentNode<NodeName>) => {
+    setSeed(EditorState.create({ schema, doc, history: true, tables: true }));
+    setInstanceKey((key) => key + 1);
+  }, []);
 
   return (
-    <EditorProvider initialState={initialState}>
+    <EditorProvider key={instanceKey} initialState={seed}>
       <ThemeProvider theme={theme}>
         <ZoomProvider>
-          <EditorWorkspace />
+          <PageLayoutProvider>
+            <EditorWorkspace onImport={handleImport} />
+          </PageLayoutProvider>
         </ZoomProvider>
       </ThemeProvider>
     </EditorProvider>

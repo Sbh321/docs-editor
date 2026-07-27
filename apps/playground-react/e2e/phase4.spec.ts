@@ -131,9 +131,10 @@ test("zoom controls scale the editor", async ({ page }) => {
   await page.getByRole("button", { name: "Zoom in" }).click();
   await expect(reset).toHaveText("110%");
 
-  // The editor container carries the scale transform.
-  const editor = page.locator(".playground-editor");
-  await expect(editor).toHaveAttribute("style", /scale\(1\.1\)/);
+  // The page surface (canvas) carries the scale transform, so zoom scales the
+  // whole page, not just the editor content.
+  const canvas = page.locator(".pg-page-canvas");
+  await expect(canvas).toHaveAttribute("style", /scale\(1\.1\)/);
 
   await reset.click();
   await expect(reset).toHaveText("100%");

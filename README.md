@@ -22,6 +22,8 @@ zoom, theme provider, icon set) are in place. See
 | [`packages/docs-editor-core`](./packages/docs-editor-core) | `@sbh321/docs-editor-core` — framework-agnostic editor engine |
 | [`packages/docs-editor-react`](./packages/docs-editor-react) | `@sbh321/docs-editor-react` — React adapter + headless UI components |
 | [`packages/docs-editor-icons`](./packages/docs-editor-icons) | `@sbh321/docs-editor-icons` — optional default icon set |
+| [`packages/docs-editor-markdown`](./packages/docs-editor-markdown) | `@sbh321/docs-editor-markdown` — Markdown import/export |
+| [`packages/docs-editor-docx`](./packages/docs-editor-docx) | `@sbh321/docs-editor-docx` — DOCX (Word) import/export |
 | [`apps/playground-react`](./apps/playground-react) | Internal dev app verifying workspace linking |
 | [`examples/basic-react`](./examples/basic-react) | Minimal public-facing integration reference (Vite) |
 | [`examples/basic-next`](./examples/basic-next) | Minimal public-facing integration reference (Next.js App Router) |

@@ -1179,32 +1179,377 @@ v0.4.1
 
 Status:
 
-Planned
+Complete — all six milestones (5.1–5.6) shipped and their exit criteria met.
+Serialization contracts + registry + JSON (5.1), HTML export (5.2), sanitized
+HTML import + `HtmlParseSpec` (5.3), the `@sbh321/docs-editor-markdown` package
+(5.4), print-friendly rendering + browser print-to-PDF via `PrintExporter`
+(5.5), and per-format round-trip/interop tests plus the playground import/export
+panel wired end-to-end (5.6).
 
 Objective:
 
-Support document portability.
+Make documents portable — importable from and exportable to the formats the
+broader ecosystem uses — while keeping the internal document model the single
+source of truth. Per ARCHITECTURE.md's Serialization Architecture: the internal
+model stays authoritative, **importers translate external formats *into* the
+model, exporters translate the model *out*, and no external format ever becomes
+the canonical representation.**
 
-Deliverables:
+This section expands the roadmap's original five-line Phase 5 with everything
+the architecture and spec actually require of import/export — the serialization
+architecture, the import/export pipelines, the interoperability targets,
+security, scalability, and plugin-extensibility — none of which the short
+version captured.
 
-- JSON import/export
-- HTML import/export
-- Markdown import/export
-- PDF export
-- Print-friendly rendering
+## What already exists (the baseline)
 
-Future:
+- **JSON is done** (Phase 1). `DocumentSerializer.serialize()`/`deserialize()`
+  round-trips the native model; `deserialize()` rebuilds every node/mark
+  *through the schema* rather than trusting input, so corrupt/untrusted JSON is
+  rejected with actionable errors. Phase 5 keeps this and re-frames it under a
+  shared contract (see 5.1).
+- **Same-document clipboard** copy/paste works via the view (Phase 3.9). But
+  importing *arbitrary external* HTML (pasted from Google Docs, Word, a web
+  page) faithfully was explicitly **deferred to Phase 5** — it needs per-node
+  `parseDOM` rules the schema doesn't model yet (see 5.3).
+- **Rendering is one-directional.** The view renders nodes/marks to DOM via
+  `DOMOutputSpec` renderer maps (`nodeRenderers`/`markRenderers`), but there is
+  **no inverse DOM→node parse layer**, and no HTML/Markdown/PDF serializer.
 
-- DOCX support
+## Requirements pulled from ARCHITECTURE.md & PROJECT_SPEC.md
+
+These are the constraints Phase 5 must satisfy (not just "add formats"):
+
+- **Formats.** Import: JSON, HTML, Markdown (DOCX "later"). Export: JSON, HTML,
+  Markdown, PDF (DOCX future). Future formats: ODT, RTF, EPUB — out of scope.
+- **Interoperability targets:** Google Docs, Microsoft Word, Markdown editors,
+  static-site generators, HTML editors. *Maximize* round-trip fidelity for
+  commonly-supported features; perfect fidelity is **not** required where the
+  underlying models differ (spec is explicit on this). Documents exported must
+  be openable/editable in Google Docs and Word with minimal loss, and documents
+  from those apps importable with minimal loss.
+- **Security (first-class):** never execute arbitrary HTML; sanitize imported /
+  pasted content; validate imported documents; prevent unsafe serialization.
+- **Scalability:** large-document import/export should avoid blocking, and the
+  design should *anticipate* streaming, chunked processing, progress reporting,
+  cancellation, and future background execution — even if v0.5.0 ships
+  synchronous implementations.
+- **Plugin-extensibility:** the Plugin System lists Serializers, Importers, and
+  Exporters as plugin contributions. Phase 5's contracts must be shaped so a
+  Phase 9 plugin (or a first-party format package) can register a new format
+  without changing core.
+
+## Architectural decisions (locked)
+
+**Where do format serializers live?** HTML and Markdown serialization both need
+the *compiled ProseMirror schema* (`prosemirror-model`'s `DOMSerializer`/
+`DOMParser`; `prosemirror-markdown`'s serializer/parser), which the ESLint
+engine-boundary rule keeps **inside `docs-editor-core`'s `src/engine/`**. A
+separate package therefore *cannot* implement them by importing ProseMirror
+directly without breaching the boundary. Decisions:
+
+- **HTML + the serialization contracts + JSON live in `docs-editor-core`**,
+  engine-encapsulated (HTML needs only `prosemirror-model`, already a core dep —
+  **zero new deps**).
+- **Markdown lives in a new `@sbh321/docs-editor-markdown` package**, built on a
+  **core serialization primitive**: Milestone 5.1 exposes a small, headless
+  hook (a way to render the doc to DOM and to parse DOM/tokens back through the
+  compiled schema) so the Markdown package can implement `prosemirror-markdown`/
+  `markdown-it` *without* importing ProseMirror itself — keeping core lean, the
+  engine boundary intact, and matching the PROJECT_SPEC ecosystem. Designing
+  that primitive cleanly is part of 5.1's scope.
+
+**PDF: print-friendly rendering + browser print-to-PDF.** PDF for v0.5.0 is a
+print stylesheet + a "print view" built on the HTML exporter, using the
+browser's `window.print()` — zero heavy deps, framework-agnostic, works
+everywhere; "professional report" quality comes from the browser's print
+engine. A programmatic `@sbh321/docs-editor-export-pdf` package (e.g. pdf-lib,
+for headless/server-side PDF) is an explicit **follow-up**, not v0.5.0.
+
+## Milestone 5.1 — Serialization contracts & JSON (core, no new deps)
+
+The seam every format plugs into.
+
+- Define `DocumentExporter` / `DocumentImporter` contracts (bound to a schema):
+  an exporter turns a `DocumentNode` into a string (or, later, a `Blob`/stream);
+  an importer turns external input into a validated `DocumentNode`. Return types
+  shaped so a future async/streaming variant is additive, not breaking.
+- A `SerializationRegistry` (mirroring `CommandRegistry`) mapping a format id to
+  its importer/exporter — the surface a plugin registers into (anticipates
+  Phase 9).
+- Re-express the existing JSON serializer as the reference implementation of the
+  contract (keep `DocumentSerializer`'s validate-through-schema behavior).
+
+## Milestone 5.2 — HTML export (core; reuses `DOMOutputSpec`)
+
+- `HtmlExporter` serializes a `DocumentNode` to an HTML string using per-node/
+  mark `DOMOutputSpec` renderers (the *same* shape the view uses, so exported
+  tags match what's rendered), via `prosemirror-model`'s `DOMSerializer`
+  (engine-encapsulated). Generalize the renderer map so it's usable without a
+  live view, shared between the view and the exporter.
+- "Prevent unsafe serialization": rely on the serializer's attribute escaping;
+  add tests for injection-shaped attribute values.
+- Deterministic output suitable for static-site generators and HTML editors.
+
+## Milestone 5.3 — HTML import + sanitization (core; new parse-spec + security)
+
+The largest new primitive, and the security-critical one.
+
+- **New `parseDOM` / parse-rule concept** — per-node/mark rules mapping DOM
+  (tag + attributes) → node/mark type + attrs. The inverse of `DOMOutputSpec`,
+  decoupled from the schema the same way renderers are (a supplied map, not
+  baked into `NodeSpec`).
+- `HtmlImporter` parses an HTML string → validated `DocumentNode` via
+  `prosemirror-model`'s `DOMParser` (engine-encapsulated), rebuilt through the
+  schema (same validate-through-schema guarantee as JSON deserialize).
+- **Sanitization (mandatory):** an allowlist pass that strips `<script>`,
+  event-handler attributes (`on*`), `javascript:`/`data:` URLs, and any
+  tag/attribute not modeled — so **arbitrary HTML is never executed**. This is
+  the concrete implementation of the Security section.
+- **Bonus:** the same parse rules upgrade *interactive paste* of external HTML
+  (the Phase 3.9 deferral) — pasting from Google Docs/Word/a web page maps into
+  the schema instead of falling back to plain text.
+
+## Milestone 5.4 — Markdown import/export (`@sbh321/docs-editor-markdown`, new package)
+
+- `MarkdownExporter` / `MarkdownImporter` over `prosemirror-markdown`
+  (`MarkdownSerializer`/`MarkdownParser`) + `markdown-it`, with schema-specific
+  serialize functions and token parse specs — in the new
+  `@sbh321/docs-editor-markdown` package, built on the core serialization
+  primitive from 5.1 (so it never imports ProseMirror directly).
+- **Fidelity contract:** Markdown is intentionally lossy — features it can't
+  express (colors, complex tables, some structure) degrade predictably; document
+  exactly what survives a round trip. Targets Markdown editors and static-site
+  generators.
+- Evaluate `prosemirror-markdown` + `markdown-it` against CLAUDE.md's dependency
+  policy (maintenance, TS support, bundle size, tree-shaking) before adding.
+
+## Milestone 5.5 — PDF export & print-friendly rendering (print-to-PDF)
+
+- **Print-friendly rendering:** a print stylesheet and a "print view" produced
+  by the HTML exporter (clean, pagination-friendly markup; hides editor chrome),
+  so a document prints — and browser-print-to-PDFs — as a professional report.
+- **PDF export** via the browser's `window.print()` on that print view; a
+  programmatic `@sbh321/docs-editor-export-pdf` package is a deferred follow-up.
+- Wire a "Print / Export PDF" action into the playground.
+
+## Milestone 5.6 — Interoperability, round-trip tests & playground wiring
+
+- Round-trip test suites per format: **JSON exact**; **HTML** faithful within
+  the schema's modeled features; **Markdown** faithful within Markdown's
+  expressiveness (with the documented lossy cases asserted, not hidden).
+- Informal Google Docs / Word interop check: HTML copied out pastes in cleanly,
+  and HTML from those apps imports with minimal loss.
+- Playground: import/export controls for JSON, HTML, and Markdown, plus the
+  print/PDF action — verified end-to-end (unit + Playwright e2e).
+
+## Deliberately deferred
+
+- **DOCX** import/export — was deferred out of v0.5.0; now delivered as an
+  additive follow-up in **Phase 5.7** below (`@sbh321/docs-editor-docx`), which
+  is exactly the "architecture should support it later" the deferral anticipated
+  — no core rewrite, just a companion package plus a backward-compatible
+  generalization of the serialization contracts.
+- **ODT / RTF / EPUB** — future formats, out of scope.
+- **Streaming / chunked / background execution** for very large documents — the
+  contracts (5.1) are shaped to allow it, but v0.5.0 ships synchronous
+  implementations; progress/cancellation land when a real large-document need
+  exists.
+- **Programmatic PDF package** (`@sbh321/docs-editor-export-pdf`) — deferred;
+  v0.5.0 ships the print-to-PDF baseline instead.
+
+## Package ecosystem impact
+
+- HTML + the serialization contracts + JSON + the Markdown serialization
+  primitive: **`docs-editor-core`**.
+- Markdown: **`@sbh321/docs-editor-markdown`** (new package), matching the
+  PROJECT_SPEC planned ecosystem.
+- PDF: print-based (core/adapter) for v0.5.0; `@sbh321/docs-editor-export-pdf`
+  later.
+
+## Dependencies to evaluate (CLAUDE.md dependency policy)
+
+- `prosemirror-markdown` + `markdown-it` (+ `@types/markdown-it`) — Markdown.
+- A PDF library (e.g. `pdf-lib`) — only if the programmatic PDF path is chosen.
+- No new dep for HTML (reuses `prosemirror-model`) or JSON.
 
 Exit Criteria:
 
-- Documents can round-trip without data loss
-- PDF suitable for professional reports
+- Documents round-trip **without data loss** where the format supports it: JSON
+  exact; HTML/Markdown faithful within their modeled/expressible features (lossy
+  cases documented and tested, not silent)
+- HTML import **never executes arbitrary content** — sanitized against an
+  allowlist, validated through the schema
+- Importers translate *into* the model and exporters *out*; the internal model
+  stays the single source of truth (no external format becomes canonical)
+- A document can be exported and re-opened in Google Docs / Word with minimal
+  formatting loss, and content from those apps imported with minimal loss
+- PDF output suitable for professional reports (via print-friendly rendering)
+- Serialization contracts are plugin-ready (a new format can be registered
+  without changing core)
+- All packages build, lint, typecheck, and test clean
 
 Target Version:
 
 v0.5.0
+
+---
+
+# Phase 5.7 — DOCX Import & Export
+
+Status:
+
+Complete — `@sbh321/docs-editor-docx` ships `DocxExporter` (→ `.docx` bytes via
+`docx`) and `DocxImporter` (`.docx` → HTML via `mammoth` → sanitized
+`HtmlImporter`). The serialization contracts were generalized (payload-generic,
+async-tolerant) with zero change to existing exporters/importers or the
+registry. Wired into the playground (download on export, file-picker on import,
+lazy-loaded) with an end-to-end binary round-trip test.
+
+Additive follow-up to Phase 5, re-opening the deferred DOCX item now that the
+serialization architecture (contracts + registry + the HTML import pipeline) is
+in place to support it cleanly.
+
+Objective:
+
+Import and export Microsoft Word `.docx` documents while keeping the internal
+model authoritative — DOCX is just another pair of importer/exporter over the
+public `DocumentNode` + `Schema`, exactly like Markdown. No format becomes
+canonical; the `.docx` is translated *in* and *out*.
+
+## Why it needs more than a string exporter
+
+Unlike JSON/HTML/Markdown, `.docx` is **binary** (a ZIP of Office Open XML
+parts) and the mapping libraries are **asynchronous**. Phase 5's contracts were
+string- and sync-typed. Rather than bolt on a parallel contract, the two
+interfaces are generalized once, backward-compatibly:
+
+- `DocumentExporter<NodeName, Output = string>` — `serialize(doc): Output`
+- `DocumentImporter<NodeName, Input = string, Result = DocumentNode<NodeName>>` — `parse(input): Result`
+
+Defaults keep every existing exporter/importer and the synchronous
+`SerializationRegistry` unchanged (the registry is typed to the `string`
+default, so it accepts only string formats — a binary DOCX exporter isn't
+assignable and is used directly). DOCX is then a first-class member of the same
+contract family: `DocumentExporter<NodeName, Promise<Uint8Array>>` and
+`DocumentImporter<NodeName, ArrayBuffer, Promise<DocumentNode<NodeName>>>`.
+
+## Package & dependencies
+
+New companion package **`@sbh321/docs-editor-docx`** (like `-markdown`, works
+only over the public model — never the engine). Dependencies, weighed against
+CLAUDE.md's dependency policy:
+
+- **`docx`** (dolanmiu) — mature, TypeScript-native, MIT, browser-capable;
+  builds `.docx` from a JS object model. Used for **export**.
+- **`mammoth`** — mature, widely adopted, MIT; converts `.docx` → HTML. Used for
+  **import**, then fed through core's already-sanitized `HtmlImporter`, so DOCX
+  import inherits the schema validation and security guarantees rather than
+  introducing a second parsing/sanitization surface.
+
+## Milestones
+
+- **5.7.0 — Contracts.** Generalize `DocumentExporter`/`DocumentImporter`
+  (payload-generic, async-tolerant). Backward compatible; registry unchanged.
+- **5.7.1 — Package scaffold.** `@sbh321/docs-editor-docx` + build/test config.
+- **5.7.2 — Export.** `DocxExporter` + a `DocxSpec` type-name map (like
+  `MarkdownSpec`): headings, paragraphs, bold/italic/underline/strike/code,
+  links, bullet/ordered lists, blockquote, code blocks, dividers, tables,
+  images. Returns `Promise<Uint8Array>`.
+- **5.7.3 — Import.** `DocxImporter`: `mammoth` (`.docx` bytes → HTML) →
+  `HtmlImporter` (sanitized, schema-validated). Binary input, async result.
+- **5.7.4 — Tests.** Export→import round-trip within DOCX-expressible features;
+  structure/mark mapping; security (no script execution through the HTML path).
+- **5.7.5 — Playground + docs.** DOCX in the import/export panel (download on
+  export, file-picker on import); e2e; READMEs, ARCHITECTURE, changeset.
+
+## Deliberately deferred (unchanged)
+
+- **ODT / RTF / EPUB**, programmatic PDF, and streaming/chunked execution —
+  still out of scope; the generalized contracts leave room for all of them.
+
+Exit Criteria:
+
+- A document exports to `.docx` and re-opens in Microsoft Word / Google Docs
+  with minimal formatting loss, and `.docx` from those apps imports with minimal
+  loss (faithful within DOCX-expressible, schema-modeled features)
+- DOCX import **never executes arbitrary content** — it rides the existing
+  sanitized HTML import path and is rebuilt through the schema
+- The internal model stays the single source of truth (DOCX is translated in/out)
+- Core serialization contracts remain backward compatible; no change to existing
+  string exporters/importers or the registry's public behavior
+- New package and all existing packages build, lint, typecheck, and test clean
+
+Target Version:
+
+v0.6.0
+
+---
+
+# Phase 5.8 — Document Fonts & Page Layout
+
+Status:
+
+Complete — document font families, a full page-layout system, and live
+pagination, delivered as editor-experience enhancements on top of the Phase 4
+headless UI.
+
+Objective:
+
+Make the editor feel like a professional document editor: choose fonts, and lay
+documents out on real pages (sizes, orientation, margins, headers/footers, page
+numbers) with content flowing across multiple sheets as it grows.
+
+Deliverables:
+
+- **Fonts & colors.** A reusable core `setMark(markType, attrs)` command (set an
+  attribute-carrying mark to a value, replacing any existing one; stored-mark
+  handling at a collapsed cursor). The playground adds a `font_family` mark and
+  a font picker with common web-safe families (Arial default), plus a
+  `text_color` mark and a color-carrying `highlight`, with text/highlight color
+  pickers. Colors carry through HTML, print, and DOCX exports (run `color` /
+  `shading`); Markdown drops them (text preserved).
+- **Page feel.** The editor content area fills the page and drops the default
+  contenteditable focus outline with a page-appropriate `caret-color`, so it
+  reads as a page rather than an input field, and a click anywhere on the page
+  places the caret.
+- **Page layout (core).** A framework-agnostic `page-layout` module —
+  `PAGE_SIZES` (A4/A3/A5/Letter/Legal/Tabloid/Executive), orientation, margin
+  presets, `PageLayout`, `resolvePageDimensions()`. Presentation, kept out of
+  the document model. `PrintExporter` gained a `pageLayout` option (`@page`
+  size/margins + running header/footer).
+- **Page layout & pagination (react).** `PageLayoutProvider`/`usePageLayout`,
+  `PageSetupControls`, and `PageSurface` (the page view). **Live pagination**
+  (`usePagination`): content flows onto multiple sheets with gaps, recomputed on
+  every content/layout/size change.
+- **Decoration engine extensions (core), enabling pagination safely.** Node
+  decorations (`Decoration.type: "node"`) to attribute a block's own element;
+  source-composed decorations (`setDecorations(decorations, source)`) so pagination
+  and search coexist; `EditorView.posAtDOM()` to map a measured element back to
+  a document position. The editor stays a single contenteditable — page breaks
+  are visual decoration spacing, never document edits.
+
+Design notes:
+
+- Pagination measures in **scale-independent natural coordinates** (each block's
+  position with the currently-applied break spacing subtracted), so it converges
+  in one extra pass instead of oscillating, and stays correct under zoom.
+- Known limitation: a block taller than a page overflows rather than splitting.
+- For print, page numbers rely on the on-screen paginated view / the browser's
+  print options; CSS page counters aren't reliably supported across browsers.
+
+Exit Criteria:
+
+- A font can be applied to a selection and carried into newly typed text
+- Documents render on real page sizes/orientation with margins, headers,
+  footers, and page numbers
+- Content reflows across multiple sheets live as it grows, without corrupting
+  editing, selection, undo, or search highlighting
+- All packages build, lint, typecheck, and test clean (unit + Playwright e2e)
+
+Target Version:
+
+v0.6.0
 
 ---
 

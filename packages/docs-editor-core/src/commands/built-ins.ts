@@ -6,6 +6,7 @@ import {
   runEngineRemoveFormatting,
   runEngineSelectAll,
   runEngineSetBlockType,
+  runEngineSetMark,
   runEngineToggleMark,
   runEngineWrapIn,
 } from "../engine";
@@ -118,6 +119,28 @@ export function toggleMark(markType: string, attrs?: Record<string, unknown>) {
   ): boolean => {
     const mark = state.schema.mark(markType as MarkName, attrs);
     return runEngineToggleMark(state.engine, mark.type, mark.attrs, adaptDispatch(dispatch));
+  };
+}
+
+/**
+ * Sets the mark `markType` to a specific value over the selection, replacing
+ * any existing mark of the same type — the "choose a value" counterpart to
+ * {@link toggleMark}'s on/off. Use it for attribute-carrying marks whose value
+ * changes rather than toggles: a font family, font size, or text color. At a
+ * collapsed cursor it updates the stored marks so the next typed text carries
+ * the value.
+ *
+ * See {@link toggleMark} for why `markType` is a plain `string` and the returned
+ * function is generic; `Schema.mark()` validates `markType`/`attrs` against the
+ * real schema at call time.
+ */
+export function setMark(markType: string, attrs?: Record<string, unknown>) {
+  return <NodeName extends string = string, MarkName extends string = string>(
+    state: EditorState<NodeName, MarkName>,
+    dispatch?: Dispatch<NodeName>,
+  ): boolean => {
+    const mark = state.schema.mark(markType as MarkName, attrs);
+    return runEngineSetMark(state.engine, mark.type, mark.attrs, adaptDispatch(dispatch));
   };
 }
 

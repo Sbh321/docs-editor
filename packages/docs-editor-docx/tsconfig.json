@@ -1,0 +1,12 @@
+{
+  "extends": "@docs-editor/typescript-config/base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./.tsbuild",
+    "tsBuildInfoFile": "./.tsbuild/tsconfig.tsbuildinfo",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["src"],
+  "exclude": ["dist", ".tsbuild", "node_modules"],
+  "references": [{ "path": "../docs-editor-core" }]
+}

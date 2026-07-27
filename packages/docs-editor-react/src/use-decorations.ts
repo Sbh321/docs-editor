@@ -13,15 +13,19 @@ import type { Decoration } from "@sbh321/docs-editor-core";
  * whenever its identity changes. This is the generic building block behind
  * {@link useSearchHighlight}; use it directly for other overlays (comment
  * ranges, spellcheck, …).
+ *
+ * `source` names this contributor so several `useDecorations` calls coexist
+ * (their decorations are unioned) instead of overwriting each other; give each
+ * distinct overlay its own stable source. Defaults to a shared source.
  */
-export function useDecorations(decorations: readonly Decoration[]): void {
+export function useDecorations(decorations: readonly Decoration[], source?: string): void {
   const view = useEditorView();
 
   useEffect(() => {
     if (!view) {
       return undefined;
     }
-    view.setDecorations(decorations);
-    return () => view.setDecorations([]);
-  }, [view, decorations]);
+    view.setDecorations(decorations, source);
+    return () => view.setDecorations([], source);
+  }, [view, decorations, source]);
 }

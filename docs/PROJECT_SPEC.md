@@ -357,11 +357,11 @@ The editor should eventually support:
 
 Supported formats should include:
 
-- Native JSON
-- HTML
-- Markdown
-- PDF
-- DOCX
+- Native JSON _(shipped)_
+- HTML _(shipped)_
+- Markdown _(shipped — `@sbh321/docs-editor-markdown`)_
+- PDF _(shipped as print-to-PDF via `PrintExporter`; programmatic PDF deferred)_
+- DOCX _(shipped — `@sbh321/docs-editor-docx`)_
 
 Future formats may include:
 
@@ -398,9 +398,11 @@ Potential packages include:
 
 @sbh321/docs-editor-history
 
-@sbh321/docs-editor-markdown
+@sbh321/docs-editor-markdown _(shipped in Phase 5 — Markdown import/export)_
 
-@sbh321/docs-editor-export-pdf
+@sbh321/docs-editor-docx _(shipped in Phase 5.7 — DOCX import/export)_
+
+@sbh321/docs-editor-export-pdf _(deferred; Phase 5 ships print-to-PDF via `PrintExporter` instead)_
 
 @sbh321/docs-editor-mermaid
 

@@ -36,4 +36,14 @@ export interface Decoration {
   readonly from: number;
   readonly to: number;
   readonly attributes: DecorationAttributes;
+  /**
+   * How the decoration is applied:
+   * - `"inline"` (default) wraps the covered text range in an element carrying
+   *   the attributes (search highlights, comment ranges).
+   * - `"node"` applies the attributes to the single block node spanning
+   *   `from`..`to` (its outer element) — e.g. a `style: "margin-top: …"` to push
+   *   a block down, the mechanism behind page-break spacing. `from`/`to` must be
+   *   the node's own position range (`pos` … `pos + nodeSize`).
+   */
+  readonly type?: "inline" | "node";
 }

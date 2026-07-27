@@ -26,7 +26,15 @@ export function buildEngineDecorationSet(
   for (const decoration of decorations) {
     const from = clamp(decoration.from, 0, max);
     const to = clamp(decoration.to, from, max);
-    if (to > from) {
+    if (to <= from) {
+      continue;
+    }
+    if (decoration.type === "node") {
+      // Node decorations attribute the block's own DOM element (e.g. a margin
+      // to push it onto the next page). `nodeName` is an inline-only concept.
+      const { nodeName: _nodeName, ...attributes } = decoration.attributes;
+      engineDecorations.push(ProseMirrorDecoration.node(from, to, { ...attributes }));
+    } else {
       engineDecorations.push(ProseMirrorDecoration.inline(from, to, { ...decoration.attributes }));
     }
   }
@@ -37,42 +45,63 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(value, max));
 }
 
+/** The default source key used when a caller doesn't name one. */
+export const DEFAULT_DECORATION_SOURCE = "default";
+
 /**
- * Holds the current decorations for one view, plus a one-entry memo so the
- * `DecorationSet` is only rebuilt when the decorations or the document actually
- * change — the view asks for decorations on every render, so this keeps
- * unrelated re-renders (typing elsewhere) from rebuilding the set.
+ * Holds the current decorations for one view, keyed by *source* so independent
+ * contributors (search highlighting, pagination spacers, comment ranges) can
+ * coexist — each replaces only its own entry, and the rendered set is their
+ * union. A `version` counter + one-entry memo keeps the `DecorationSet` from
+ * being rebuilt on unrelated re-renders (the view asks for decorations on every
+ * render).
  */
 export interface DecorationHolder {
-  decorations: readonly Decoration[];
+  readonly sources: Map<string, readonly Decoration[]>;
+  version: number;
   cache: {
     readonly doc: ProseMirrorNode;
-    readonly decorations: readonly Decoration[];
+    readonly version: number;
     readonly set: EngineDecorationSet;
   } | null;
 }
 
 export function createDecorationHolder(decorations: readonly Decoration[]): DecorationHolder {
-  return { decorations, cache: null };
+  const sources = new Map<string, readonly Decoration[]>();
+  if (decorations.length > 0) {
+    sources.set(DEFAULT_DECORATION_SOURCE, decorations);
+  }
+  return { sources, version: 0, cache: null };
 }
 
+/** Replaces the decorations contributed by `source` (empty removes the source). */
 export function setHolderDecorations(
   holder: DecorationHolder,
   decorations: readonly Decoration[],
+  source: string = DEFAULT_DECORATION_SOURCE,
 ): void {
-  holder.decorations = decorations;
+  if (decorations.length > 0) {
+    holder.sources.set(source, decorations);
+  } else {
+    holder.sources.delete(source);
+  }
+  holder.version += 1;
 }
 
-/** The decoration set for `doc`, rebuilt only when `doc` or the holder's decorations changed. */
+/** The decoration set for `doc` (the union of all sources), rebuilt only when `doc` or a source changed. */
 export function resolveDecorationSet(
   holder: DecorationHolder,
   doc: ProseMirrorNode,
 ): EngineDecorationSet {
-  const { cache, decorations } = holder;
-  if (cache && cache.doc === doc && cache.decorations === decorations) {
+  const { cache, version } = holder;
+  if (cache && cache.doc === doc && cache.version === version) {
     return cache.set;
   }
-  const set = buildEngineDecorationSet(doc, decorations);
-  holder.cache = { doc, decorations, set };
+  const all: Decoration[] = [];
+  for (const decorations of holder.sources.values()) {
+    all.push(...decorations);
+  }
+  const set = buildEngineDecorationSet(doc, all);
+  holder.cache = { doc, version, set };
   return set;
 }

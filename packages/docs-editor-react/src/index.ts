@@ -16,6 +16,7 @@ export { useOutline } from "./use-outline";
 export {
   DEFAULT_SEARCH_MATCH_ACTIVE_CLASS,
   DEFAULT_SEARCH_MATCH_CLASS,
+  SEARCH_DECORATION_SOURCE,
   useSearchHighlight,
 } from "./use-search-highlight";
 export { SearchHighlight } from "./search-highlight";
@@ -24,6 +25,14 @@ export { ThemeProvider, renderThemeIcon, useTheme, useThemeClassName, useThemeIc
 export { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "./toolbar";
 export { ContextMenu, ContextMenuItem, FloatingToolbar, SlashMenu } from "./floating";
 export { OutlinePanel, TableOfContents, useOutlineNavigation } from "./outline";
+export {
+  PAGINATION_DECORATION_SOURCE,
+  PageLayoutProvider,
+  PageSetupControls,
+  PageSurface,
+  usePageLayout,
+  usePagination,
+} from "./page";
 export { ZoomControls, ZoomProvider, useZoom } from "./zoom";
 
 export type { EditorProps } from "./editor";
@@ -48,4 +57,11 @@ export type {
   SlashMenuProps,
 } from "./floating";
 export type { OutlinePanelProps, TableOfContentsProps } from "./outline";
+export type {
+  PageLayoutContextValue,
+  PageLayoutProviderProps,
+  PageSetupControlsProps,
+  PageSurfaceProps,
+  PaginationResult,
+} from "./page";
 export type { ZoomContextValue, ZoomControlsProps, ZoomProviderProps } from "./zoom";

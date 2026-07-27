@@ -19,6 +19,7 @@ export {
   removeFormatting,
   selectAll,
   setBlockType,
+  setMark,
   toggleMark,
   wrapIn,
 } from "./built-ins";

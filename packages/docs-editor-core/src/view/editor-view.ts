@@ -4,6 +4,7 @@ import {
   engineViewCoordsAtPos,
   engineViewDom,
   engineViewHasFocus,
+  engineViewPosAtDOM,
   engineViewSetDecorations,
   focusEngineView,
   updateEngineViewState,
@@ -157,6 +158,17 @@ export class EditorView<NodeName extends string = string, MarkName extends strin
   }
 
   /**
+   * The document position mapping to a DOM `node`/`offset` — the inverse of
+   * {@link EditorView.coordsAtPos}'s intent. Maps a rendered element back to a
+   * document position, e.g. to turn a measured block element into the position
+   * range a node {@link Decoration} needs. Mirrors `posAtDOM(node, 0)` at a
+   * block's start returning the position just inside it.
+   */
+  posAtDOM(node: Node, offset: number): number {
+    return engineViewPosAtDOM(this.engine, node, offset);
+  }
+
+  /**
    * Replaces the view's visual {@link Decoration}s — overlays that paint
    * ranges (e.g. search-match highlights) without touching the document.
    * Applies immediately; pass `[]` to clear. Decorations are view state, so
@@ -164,9 +176,14 @@ export class EditorView<NodeName extends string = string, MarkName extends strin
    * resolved against the current document on every render, so recompute and
    * call this whenever the document or your source (e.g. a search query)
    * changes.
+   *
+   * `source` names an independent contributor so several can coexist (search
+   * highlighting, pagination spacers, …): each call replaces only its own
+   * source, and the rendered decorations are the union of all sources. Defaults
+   * to a shared `"default"` source.
    */
-  setDecorations(decorations: readonly Decoration[]): void {
-    engineViewSetDecorations(this.engine, decorations);
+  setDecorations(decorations: readonly Decoration[], source?: string): void {
+    engineViewSetDecorations(this.engine, decorations, source);
   }
 
   hasFocus(): boolean {

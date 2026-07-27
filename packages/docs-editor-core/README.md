@@ -3,13 +3,15 @@
 Framework-agnostic document editing engine for [Docs Editor](../../README.md).
 
 > **Status:** [Phase 1 — Editor Core](../../docs/ROADMAP.md#phase-1--editor-core)
-> — all four exit criteria are met — and
-> [Phase 3 — Rich Editing](../../docs/ROADMAP.md#phase-3--rich-editing)
+> — all four exit criteria are met — [Phase 3 — Rich Editing](../../docs/ROADMAP.md#phase-3--rich-editing)
 > complete (headings, lists, quotes, dividers, code blocks, images, links,
-> captions, tables, keyboard shortcuts, copy/paste, search & replace).
+> captions, tables, keyboard shortcuts, copy/paste, search & replace), and
+> [Phase 5 — Import & Export](../../docs/ROADMAP.md#phase-5--import--export)
+> complete (serialization contracts + registry, JSON/HTML/print exporters,
+> sanitized HTML import; Markdown lives in `@sbh321/docs-editor-markdown`).
 > Document model, schema system (`src/schema/`), internal ProseMirror-backed
 > engine adapter (`src/engine/`), `EditorState`/`Transaction` (`src/state/`),
-> commands (`src/commands/`), undo/redo history, native JSON serialization
+> commands (`src/commands/`), undo/redo history, JSON/HTML/print serialization
 > (`src/serialization/`), copy/paste (`src/clipboard/`), document search
 > (`src/search/`), and DOM rendering (`src/view/`, added in
 > [Phase 2, Milestone 2.2](../../docs/ROADMAP.md#phase-2--react-adapter)) are
@@ -236,8 +238,10 @@ deleteSelection(state, (tr) => setState(state.apply(tr)));
 toggleMark("bold")(state, (tr) => setState(state.apply(tr)));
 ```
 
-`deleteSelection`, `selectAll`, `toggleMark`, `setBlockType`, `wrapIn`,
-`lift`, `newlineInCode`, `exitCode`, `removeFormatting`, and the essential
+`deleteSelection`, `selectAll`, `toggleMark`, `setMark` (set an
+attribute-carrying mark to a value — e.g. a font family — replacing any existing
+one, the "choose a value" counterpart to `toggleMark`), `setBlockType`,
+`wrapIn`, `lift`, `newlineInCode`, `exitCode`, `removeFormatting`, and the essential
 editing commands (`splitBlock`, `joinBackward`/`joinForward`, `joinUp`/
 `joinDown`, `liftEmptyBlock`, `createParagraphNear`, `selectNodeBackward`/
 `selectNodeForward`, `selectParentNode`) wrap
@@ -410,10 +414,64 @@ const json = serializer.serialize(doc);
 const revived = serializer.deserialize(json); // or already-parsed data
 ```
 
-This covers native JSON only. HTML and Markdown import/export are
-[Phase 5 — Import & Export](../../docs/ROADMAP.md#phase-5--import--export),
-since the internal document model — never an external format — must stay
-the canonical representation.
+### Format contracts, the registry, HTML, and print
+
+[Phase 5](../../docs/ROADMAP.md#phase-5--import--export) adds symmetric
+contracts so every format is expressed the same way and a new one is additive
+(never a core change):
+
+- `DocumentExporter<NodeName, Output = string>` — `{ format; serialize(doc): Output }`
+- `DocumentImporter<NodeName, Input = string, Result = DocumentNode>` — `{ format; parse(input): Result }`
+
+The payload type parameters default to `string`/`DocumentNode`, so text formats
+and the synchronous registry are unchanged; binary/async formats parameterize
+them — the DOCX package
+([`@sbh321/docs-editor-docx`](../docs-editor-docx/README.md)) is a
+`DocumentExporter<NodeName, Promise<Uint8Array>>` /
+`DocumentImporter<NodeName, ArrayBuffer, Promise<DocumentNode>>` and is used
+directly rather than through the string registry.
+
+`SerializationRegistry` holds them keyed by `format` and exposes
+`export(format, doc)` / `import(format, input)` (plus `has*`/`*Formats`),
+rejecting duplicate or unknown formats with actionable errors — registration is
+explicit, never automatic.
+
+Shipped in core: `JsonExporter`/`JsonImporter` (exact round-trip),
+`HtmlExporter`/`HtmlImporter`, and `PrintExporter`. **HTML import is sanitized**
+— the input is loaded into an inert document, dangerous elements and
+`on*`/`javascript:` attributes are stripped, and the result is rebuilt through
+the schema, so arbitrary HTML is never executed. Import mapping is driven by an
+`HtmlParseSpec` (tag → node/mark rules; a rule's `getAttrs` may return `null` to
+decline the match — how the importer ignores, say, Google Docs' non-bold `<b>`
+wrapper). `PrintExporter` wraps `HtmlExporter` to emit a standalone HTML
+document with an embedded print stylesheet for `window.print()` (browser
+print-to-PDF).
+
+```ts
+import {
+  HtmlExporter,
+  HtmlImporter,
+  JsonExporter,
+  JsonImporter,
+  PrintExporter,
+  SerializationRegistry,
+} from "@sbh321/docs-editor-core";
+
+const registry = new SerializationRegistry()
+  .registerExporter(new JsonExporter(schema))
+  .registerImporter(new JsonImporter(schema))
+  .registerExporter(new HtmlExporter({ schema, nodeRenderers, markRenderers }))
+  .registerImporter(new HtmlImporter({ schema, parseSpec }));
+
+const html = registry.export("html", doc);
+const doc2 = registry.import("html", html); // sanitized + schema-validated
+const printable = new PrintExporter({ schema, nodeRenderers, markRenderers }).serialize(doc);
+```
+
+Markdown import/export lives in the separate
+[`@sbh321/docs-editor-markdown`](../docs-editor-markdown/README.md) package — it
+works over this public `DocumentNode` + `Schema` API, keeping the internal model
+the single source of truth.
 
 ## Search
 
@@ -570,6 +628,25 @@ const decorations = findText(state.doc, "hello").map((match) => ({
 }));
 view.setDecorations(decorations); // pass [] to clear
 ```
+
+Decorations can be **inline** (default — wrap a text range) or **node**
+(`type: "node"` — attribute a block's own element, e.g. a `margin-top` to push
+it, the mechanism behind page-break spacing). Independent overlays **compose by
+source** — each `setDecorations(decorations, source)` replaces only its own
+source and the view renders the union, so pagination spacing and search
+highlighting coexist instead of overwriting each other. `view.posAtDOM(node,
+offset)` maps a rendered element back to a document position — used to turn a
+measured block into the node decoration it needs.
+
+## Page layout
+
+The `page-layout` module is framework-agnostic page data — `PAGE_SIZES` (A4, A3,
+A5, Letter, Legal, Tabloid, Executive), `PageOrientation`, `MARGIN_PRESETS`, the
+`PageLayout` type, and `resolvePageDimensions()`/CSS helpers. Page layout is
+*presentation* (how a document is displayed and printed), deliberately kept out
+of the document model. `PrintExporter` accepts a `pageLayout` to emit an `@page`
+size/margin rule and a running header/footer; the React adapter builds the
+on-screen page view and live pagination on top of the same primitives.
 
 Decorations are **view state, not document state** — they never touch a
 `Transaction`, `EditorState`, or history, and deliberately don't flow through

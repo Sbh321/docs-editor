@@ -8,6 +8,8 @@
   "exclude": ["dist", ".tsbuild", "node_modules"],
   "references": [
     { "path": "../../packages/docs-editor-core" },
+    { "path": "../../packages/docs-editor-docx" },
+    { "path": "../../packages/docs-editor-markdown" },
     { "path": "../../packages/docs-editor-react" }
   ]
 }

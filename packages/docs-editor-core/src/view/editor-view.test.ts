@@ -197,6 +197,66 @@ describe("EditorView", () => {
     view.destroy();
   });
 
+  it("posAtDOM maps a block element back to a document position", () => {
+    const mount = document.createElement("div");
+    const view = new EditorView(mount, {
+      state: createTestState(),
+      nodeRenderers: { paragraph: () => ["p", 0] },
+    });
+
+    const paragraph = view.dom.querySelector("p");
+    expect(paragraph).not.toBeNull();
+    // Offset 0 inside the paragraph resolves to the position just inside it
+    // (the node starts at 0, its content at 1).
+    expect(view.posAtDOM(paragraph as Node, 0)).toBe(1);
+
+    view.destroy();
+  });
+
+  it("applies a node decoration's style to the block element (page-break spacing)", () => {
+    const mount = document.createElement("div");
+    const view = new EditorView(mount, {
+      state: createTestState(),
+      nodeRenderers: { paragraph: () => ["p", 0] },
+    });
+
+    // The whole paragraph node spans 0..(its nodeSize). A node decoration
+    // attributes the block element itself — here a top margin.
+    view.setDecorations([
+      { from: 0, to: 7, type: "node", attributes: { style: "margin-top: 120px" } },
+    ]);
+
+    const paragraph = view.dom.querySelector("p");
+    expect(paragraph?.getAttribute("style")).toContain("margin-top: 120px");
+
+    view.destroy();
+  });
+
+  it("composes decorations from independent sources without clobbering", () => {
+    const mount = document.createElement("div");
+    const view = new EditorView(mount, {
+      state: createTestState(),
+      nodeRenderers: { paragraph: () => ["p", 0] },
+    });
+
+    view.setDecorations([{ from: 1, to: 4, attributes: { class: "search" } }], "search");
+    view.setDecorations(
+      [{ from: 0, to: 7, type: "node", attributes: { class: "paged" } }],
+      "pagination",
+    );
+
+    // Both sources are present at once.
+    expect(view.dom.querySelector(".search")?.textContent).toBe("Hel");
+    expect(view.dom.querySelector("p.paged")).not.toBeNull();
+
+    // Clearing one source leaves the other intact.
+    view.setDecorations([], "search");
+    expect(view.dom.querySelector(".search")).toBeNull();
+    expect(view.dom.querySelector("p.paged")).not.toBeNull();
+
+    view.destroy();
+  });
+
   it("keeps decorations applied across an updateState re-render", () => {
     const mount = document.createElement("div");
     const state = createTestState();

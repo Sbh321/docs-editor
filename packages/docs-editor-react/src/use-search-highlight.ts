@@ -6,6 +6,8 @@ import { useEditorState } from "./use-editor-state";
 
 import type { Decoration, SearchMatch } from "@sbh321/docs-editor-core";
 
+/** The decoration source used by search highlighting, so it composes with other overlays. */
+export const SEARCH_DECORATION_SOURCE = "search";
 /** The class added to every search match when no `matchClass` is given. */
 export const DEFAULT_SEARCH_MATCH_CLASS = "docs-editor-search-match";
 /** The class added to the active match when no `activeClass` is given. */
@@ -64,7 +66,7 @@ export function useSearchHighlight(
     [matches, activeIndex, matchClass, activeClass],
   );
 
-  useDecorations(decorations);
+  useDecorations(decorations, SEARCH_DECORATION_SOURCE);
 
   return matches;
 }

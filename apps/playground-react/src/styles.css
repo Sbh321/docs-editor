@@ -56,6 +56,39 @@ body {
   color: #71717a;
 }
 
+/* Import & export panel */
+.pg-io-panel > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.pg-io-panel select {
+  margin-left: 4px;
+}
+
+.pg-io-panel textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+}
+
+.pg-io-panel [role="alert"] {
+  margin: 8px 0 0;
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.pg-docx-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
 /* Toolbar theme slots */
 .pg-toolbar {
   display: flex;
@@ -294,15 +327,111 @@ body {
 
 /* Editor surface */
 .pg-editor-frame {
-  border: 1px solid var(--pg-border);
   border-radius: 8px;
-  background: var(--pg-surface);
-  padding: 16px 20px;
-  overflow: hidden;
+  overflow: auto;
+  max-height: 82vh;
 }
 
-.playground-editor:focus {
+/* Page view: a gray canvas with the centered white "page" sheet. */
+.pg-page-canvas {
+  background: #e9e9ee;
+  padding: 24px;
+  display: flex;
+  justify-content: center;
+  min-width: min-content;
+}
+
+.pg-page {
+  background: #fff;
+  color: #111;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.25);
+}
+
+.pg-page-header,
+.pg-page-footer {
+  font-size: 11px;
+  color: #6b7280;
+  letter-spacing: 0.02em;
+}
+
+.pg-page-setup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.pg-page-setup label {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pg-field {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.pg-field input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+}
+
+/* The Editor renders a wrapper div with the ProseMirror contenteditable as its
+   child, so page styling targets both. It should read as a page, not an
+   input/textarea: no chrome, and the content area fills the page so a click
+   anywhere places the caret. */
+.playground-editor {
+  /* Arial is the default document font; the font-family mark overrides it per run. */
+  font-family: Arial, Helvetica, sans-serif;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+}
+
+.playground-editor > [contenteditable] {
+  flex: 1 1 auto;
+  /* No input-field chrome. */
   outline: none;
+  border: none;
+  /* A clearly visible, page-appropriate caret (native blink). */
+  caret-color: #1f2937;
+  line-height: 1.5;
+}
+
+.playground-editor > [contenteditable]:focus,
+.playground-editor > [contenteditable]:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.pg-color-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 13px;
+}
+
+.pg-color-field input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--pg-border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.pg-font-select {
+  min-width: 8rem;
+  max-width: 11rem;
+  padding: 3px 4px;
+  border: 1px solid var(--pg-border);
+  border-radius: 6px;
+  background: var(--pg-surface);
 }
 
 .playground-editor h1 {

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createSchema } from "../schema/schema";
 import { EditorState } from "../state";
 
-import { removeFormatting } from "./built-ins";
+import { removeFormatting, setMark } from "./built-ins";
 
 const schema = createSchema({
   topNode: "doc",
@@ -17,6 +17,7 @@ const schema = createSchema({
     link: { attrs: { href: {} }, inclusive: false },
     // Excludes all other marks — inline code can't combine with bold/link.
     code: { excludes: "_" },
+    fontFamily: { attrs: { family: { default: "Arial" } } },
   },
 });
 
@@ -42,6 +43,74 @@ describe("removeFormatting", () => {
     const state = EditorState.create({ schema, doc, selection: { anchor: 1, head: 1 } });
 
     expect(removeFormatting(state)).toBe(false);
+  });
+});
+
+describe("setMark", () => {
+  it("applies a mark with a specific value across the selection", () => {
+    const doc = schema.createDocument([
+      schema.node("paragraph", undefined, [schema.text("Hello")]),
+    ]);
+    const state = EditorState.create({ schema, doc, selection: { anchor: 1, head: 6 } });
+
+    let next = state;
+    setMark("fontFamily", { family: "Georgia" })(state, (transaction) => {
+      next = state.apply(transaction);
+    });
+
+    const marks = next.doc.content[0]?.content[0]?.marks;
+    expect(marks).toHaveLength(1);
+    expect(marks?.[0]?.type).toBe("fontFamily");
+    expect(marks?.[0]?.attrs.family).toBe("Georgia");
+  });
+
+  it("replaces an existing mark of the same type rather than stacking", () => {
+    const doc = schema.createDocument([
+      schema.node("paragraph", undefined, [
+        schema.text("Hello", [schema.mark("fontFamily", { family: "Georgia" })]),
+      ]),
+    ]);
+    const state = EditorState.create({ schema, doc, selection: { anchor: 1, head: 6 } });
+
+    let next = state;
+    setMark("fontFamily", { family: "Verdana" })(state, (transaction) => {
+      next = state.apply(transaction);
+    });
+
+    const marks = next.doc.content[0]?.content[0]?.marks;
+    expect(marks).toHaveLength(1);
+    expect(marks?.[0]?.attrs.family).toBe("Verdana");
+  });
+
+  it("preserves other marks on the text (only replaces its own type)", () => {
+    const doc = schema.createDocument([
+      schema.node("paragraph", undefined, [schema.text("Hello", [schema.mark("bold")])]),
+    ]);
+    const state = EditorState.create({ schema, doc, selection: { anchor: 1, head: 6 } });
+
+    let next = state;
+    setMark("fontFamily", { family: "Verdana" })(state, (transaction) => {
+      next = state.apply(transaction);
+    });
+
+    const types = next.doc.content[0]?.content[0]?.marks.map((mark) => mark.type).sort();
+    expect(types).toEqual(["bold", "fontFamily"]);
+  });
+
+  it("at a collapsed cursor sets a stored mark for the next typed text", () => {
+    const doc = schema.createDocument([schema.node("paragraph", undefined, [schema.text("Hi")])]);
+    const state = EditorState.create({ schema, doc, selection: { anchor: 3, head: 3 } });
+
+    let next = state;
+    const handled = setMark("fontFamily", { family: "Courier New" })(state, (transaction) => {
+      next = state.apply(transaction);
+    });
+    expect(handled).toBe(true);
+
+    // Typing now carries the stored font.
+    const typed = next.apply(next.tr.insertText("!"));
+    const inserted = typed.doc.content[0]?.content.find((node) => node.text === "!");
+    expect(inserted?.marks[0]?.attrs.family).toBe("Courier New");
   });
 });
 

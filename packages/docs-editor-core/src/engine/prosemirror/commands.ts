@@ -45,6 +45,45 @@ export function runEngineToggleMark(
   return proseMirrorToggleMark(engineMarkType, attrs ?? null)(state, dispatch);
 }
 
+/**
+ * Sets a mark to a specific value across the selection — unlike
+ * {@link runEngineToggleMark}, it always *applies* `markType` (with `attrs`),
+ * first removing any existing mark of that type so the new attributes replace
+ * the old (e.g. changing a font family from one value to another). At a
+ * collapsed cursor it updates the stored marks, so the next typed character
+ * carries the new value. Reports `false` only for an empty document position
+ * where nothing can be marked.
+ */
+export function runEngineSetMark(
+  state: EngineState,
+  markType: string,
+  attrs: Record<string, unknown> | undefined,
+  dispatch?: EngineDispatch,
+): boolean {
+  const engineMarkType = state.schema.marks[markType];
+  if (!engineMarkType) {
+    throw new EngineConversionError(`Unknown mark type "${markType}" when running setMark.`);
+  }
+
+  const { empty, from, to } = state.selection;
+  const mark = engineMarkType.create(attrs ?? null);
+
+  if (empty) {
+    if (dispatch) {
+      dispatch(state.tr.removeStoredMark(engineMarkType).addStoredMark(mark));
+    }
+    return true;
+  }
+
+  if (from >= to) {
+    return false;
+  }
+  if (dispatch) {
+    dispatch(state.tr.removeMark(from, to, engineMarkType).addMark(from, to, mark));
+  }
+  return true;
+}
+
 export function runEngineSetBlockType(
   state: EngineState,
   nodeType: string,

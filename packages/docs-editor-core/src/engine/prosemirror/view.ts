@@ -116,6 +116,7 @@ export function createEngineView(
 export function engineViewSetDecorations(
   view: EngineView,
   decorations: readonly Decoration[],
+  source?: string,
 ): void {
   const holder = decorationHolders.get(view);
   // `isDestroyed` guards the unmount race: a framework adapter may clear
@@ -124,7 +125,7 @@ export function engineViewSetDecorations(
   if (!holder || view.isDestroyed) {
     return;
   }
-  setHolderDecorations(holder, decorations);
+  setHolderDecorations(holder, decorations, source);
   // Re-set the `decorations` prop with a fresh function identity so the view
   // re-evaluates it and redraws — passing `{}` can leave the prop identity
   // unchanged, letting the view skip recomputing decorations.
@@ -133,6 +134,15 @@ export function engineViewSetDecorations(
 
 export function engineViewDom(view: EngineView): HTMLElement {
   return view.dom;
+}
+
+/**
+ * The document position corresponding to a DOM `node`/`offset` — the inverse of
+ * rendering, via `prosemirror-view`'s own `posAtDOM`. Used to map a measured
+ * block element back to its document position (e.g. for pagination spacing).
+ */
+export function engineViewPosAtDOM(view: EngineView, node: Node, offset: number): number {
+  return view.posAtDOM(node, offset);
 }
 
 /**

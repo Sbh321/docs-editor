@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "@sbh321/docs-editor-core": "workspace:*",
+    "@sbh321/docs-editor-docx": "workspace:*",
     "@sbh321/docs-editor-icons": "workspace:*",
+    "@sbh321/docs-editor-markdown": "workspace:*",
     "@sbh321/docs-editor-react": "workspace:*",
     "react": "19.2.7",
     "react-dom": "19.2.7"

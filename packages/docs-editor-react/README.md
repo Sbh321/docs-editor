@@ -157,6 +157,16 @@ The seam between core's headless commands/queries and any control:
 - **`OutlinePanel` / `TableOfContents`** — jump-to navigation (flat / nested).
 - **`ZoomProvider` / `useZoom` / `ZoomControls`** — zoom as transient UI state;
   `useZoom().editorStyle` spreads onto `<Editor style>`.
+- **`PageLayoutProvider` / `usePageLayout` / `PageSetupControls` / `PageSurface`** —
+  a page view: renders the editor on a correctly-sized sheet (size, orientation,
+  margins, header/footer, page numbers), with page layout held as transient UI
+  state (like zoom). `<PageSurface paginate>` turns on **live pagination**
+  (`usePagination`) — content flows onto multiple sheets with gaps as it grows,
+  recomputed on every content/layout/size change. The editor stays a single
+  contenteditable: page breaks are visual node-decoration spacing (composed under
+  a `"pagination"` decoration source so they coexist with search highlighting),
+  never document edits. A block taller than a page overflows rather than
+  splitting.
 - **`ThemeProvider` / `useTheme`** — a headless theme contract of `classNames`
   (per slot), `icons` (by intent — accepts `@sbh321/docs-editor-icons`'
   `defaultIcons`), and `tokens` (emitted as CSS custom properties).

@@ -19,6 +19,8 @@ export {
 export type { EngineCommand } from "./prosemirror/base-commands";
 export { engineStateCopy, engineTransactionPaste } from "./prosemirror/clipboard";
 export { compileEngineSchema } from "./prosemirror/compile-schema";
+export { engineParseFromHtml, engineSerializeToHtml } from "./prosemirror/html";
+export type { EngineHtmlParseOptions, EngineHtmlSerializeOptions } from "./prosemirror/html";
 export { fromEngineNode, toEngineNode } from "./prosemirror/node-conversion";
 export { fromEngineSelection, toEngineSelection } from "./prosemirror/selection-conversion";
 export {
@@ -29,6 +31,7 @@ export {
   runEngineRemoveFormatting,
   runEngineSelectAll,
   runEngineSetBlockType,
+  runEngineSetMark,
   runEngineToggleMark,
   runEngineWrapIn,
 } from "./prosemirror/commands";
@@ -78,6 +81,7 @@ export {
   engineViewCoordsAtPos,
   engineViewDom,
   engineViewHasFocus,
+  engineViewPosAtDOM,
   engineViewSetDecorations,
   focusEngineView,
   updateEngineViewState,

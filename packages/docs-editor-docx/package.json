@@ -1,0 +1,47 @@
+{
+  "name": "@sbh321/docs-editor-docx",
+  "version": "0.0.1",
+  "description": "DOCX (Microsoft Word) import/export for Docs Editor.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sbh321/docs-editor.git",
+    "directory": "packages/docs-editor-docx"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc --build",
+    "test": "vitest run",
+    "clean": "rm -rf dist .tsbuild"
+  },
+  "dependencies": {
+    "@sbh321/docs-editor-core": "workspace:*",
+    "docx": "9.7.1",
+    "mammoth": "1.12.0"
+  },
+  "devDependencies": {
+    "@docs-editor/eslint-config": "workspace:*",
+    "@docs-editor/typescript-config": "workspace:*",
+    "jsdom": "29.1.1"
+  }
+}
