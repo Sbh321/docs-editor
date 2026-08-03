@@ -17,6 +17,25 @@ export const PAGE_GAP_PX = 24;
 /** Tolerance (px) so a block ending a hair past a page boundary doesn't break. */
 const OVERFLOW_EPSILON = 2;
 
+/**
+ * Quiet period before re-paginating, in ms.
+ *
+ * Re-flowing pages on every keystroke is what made pagination cost ~2.8 ms per
+ * keystroke on a 100-page document — not the measurement itself, which is
+ * ~0.6 ms (see docs/PERFORMANCE.md). Page breaks are only meaningful once a
+ * word or line is finished, so the work is deferred until typing pauses, which
+ * takes it off the per-keystroke path entirely. Chosen to be below the ~200 ms
+ * gap that reads as "responsive" while comfortably longer than the gap between
+ * keystrokes of even a fast typist.
+ */
+const REPAGINATE_IDLE_MS = 120;
+
+/**
+ * Hard ceiling on how long re-pagination can be deferred while input keeps
+ * arriving, so continuous typing (or a held key) cannot starve it indefinitely.
+ */
+const REPAGINATE_MAX_WAIT_MS = 500;
+
 function toPx(value: number, unit: LengthUnit): number {
   return unit === "in" ? value * PX_PER_IN : (value * PX_PER_IN) / 25.4;
 }
@@ -60,6 +79,8 @@ export function usePagination(enabled: boolean): PaginationResult {
   // positions can be recovered by subtracting it from measured positions.
   const appliedRef = useRef<Map<number, number>>(new Map());
   const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firstRequestRef = useRef<number | null>(null);
 
   const pageHeightPx = toPx(dimensions.height, dimensions.unit);
   const topPx = toPx(layout.margins.top, layout.margins.unit);
@@ -76,9 +97,12 @@ export function usePagination(enabled: boolean): PaginationResult {
     }
 
     const container = view.dom;
-    const blocks = Array.from(container.children).filter(
-      (el): el is HTMLElement => el instanceof HTMLElement,
-    );
+    const blocks: HTMLElement[] = [];
+    for (const child of container.children) {
+      if (child instanceof HTMLElement) {
+        blocks.push(child);
+      }
+    }
     if (blocks.length === 0) {
       appliedRef.current = new Map();
       setPageCount((current) => (current !== 1 ? 1 : current));
@@ -86,40 +110,44 @@ export function usePagination(enabled: boolean): PaginationResult {
       return;
     }
 
-    // Effective CSS scale from ancestor transforms (zoom), so measurements are
-    // in unscaled layout px.
-    const scale =
-      container.offsetWidth > 0
-        ? container.getBoundingClientRect().width / container.offsetWidth
-        : 1;
-    const safeScale = scale > 0 ? scale : 1;
-    const containerTop = container.getBoundingClientRect().top;
     const applied = appliedRef.current;
 
-    // Natural (spacing-independent) top and height of each block.
-    let cumulativeApplied = 0;
-    const naturals = blocks.map((el, index) => {
-      cumulativeApplied += applied.get(index) ?? 0;
-      const rect = el.getBoundingClientRect();
-      return {
-        top: (rect.top - containerTop) / safeScale - cumulativeApplied,
-        height: rect.height / safeScale,
-      };
-    });
+    // Measurement and break placement in a single pass over the blocks.
+    //
+    // `offsetTop`/`offsetHeight` rather than `getBoundingClientRect()`: not for
+    // speed — measured over 1000 blocks the two are near-identical (0.73 ms vs
+    // 0.61 ms, so rects are if anything marginally faster) — but because they
+    // are *untransformed* layout values. That removes the zoom scale-correction
+    // factor and the two extra container rect reads it needed, which is one
+    // less thing to get wrong. Positions are taken relative to the first block,
+    // which shares an offset parent with the rest and never carries break
+    // spacing itself, so the origin is stable.
+    //
+    // The pass itself is not the expensive part of pagination (see
+    // docs/PERFORMANCE.md); scheduling is.
+    const origin = blocks[0]?.offsetTop ?? 0;
 
-    // One pass: decide where breaks fall and how much spacing each needs.
     const nextBreaks = new Map<number, number>();
     let contentBottomEff = pageContentPx;
     let addedOffset = 0;
+    let cumulativeApplied = 0;
     let pages = 1;
-    for (let index = 0; index < naturals.length; index += 1) {
-      const block = naturals[index];
-      if (!block) {
+
+    for (let index = 0; index < blocks.length; index += 1) {
+      const el = blocks[index];
+      if (!el) {
         continue;
       }
-      const effTop = block.top + addedOffset;
-      const effBottom = effTop + block.height;
-      if (block.height <= pageContentPx && effBottom > contentBottomEff + OVERFLOW_EPSILON) {
+      // Subtract the spacing already applied above this block to recover its
+      // *natural* position — spacing-independent, so the computation converges
+      // instead of feeding back on itself.
+      cumulativeApplied += applied.get(index) ?? 0;
+      const naturalTop = el.offsetTop - origin - cumulativeApplied;
+      const height = el.offsetHeight;
+
+      const effTop = naturalTop + addedOffset;
+      const effBottom = effTop + height;
+      if (height <= pageContentPx && effBottom > contentBottomEff + OVERFLOW_EPSILON) {
         const nextTopEff = contentBottomEff + interGapPx;
         const spacer = nextTopEff - effTop;
         if (spacer > 0) {
@@ -128,7 +156,7 @@ export function usePagination(enabled: boolean): PaginationResult {
         }
         contentBottomEff = nextTopEff + pageContentPx;
         pages += 1;
-      } else if (block.height > pageContentPx) {
+      } else if (height > pageContentPx) {
         // Taller than a page: advance the boundary past it (no split).
         while (contentBottomEff < effBottom) {
           contentBottomEff += pageContentPx + interGapPx;
@@ -174,34 +202,63 @@ export function usePagination(enabled: boolean): PaginationResult {
   //    (including when our own break spacing is applied — that's the
   //    convergence loop, which settles in one extra pass).
   useLayoutEffect(() => {
-    const schedule = () => {
-      if (rafRef.current !== null) {
-        return;
+    const cancelPending = () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
       }
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        measure();
-      });
-    };
-
-    if (!enabled || !view || typeof ResizeObserver === "undefined") {
-      schedule(); // resets to a single unpaginated page (see `measure`)
-      return () => {
-        if (rafRef.current !== null) {
-          cancelAnimationFrame(rafRef.current);
-          rafRef.current = null;
-        }
-      };
-    }
-
-    const observer = new ResizeObserver(schedule);
-    observer.observe(view.dom);
-    return () => {
-      observer.disconnect();
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
+    };
+
+    /**
+     * Runs a measurement after `delayMs` of quiet, replacing any pass already
+     * queued. The trailing `requestAnimationFrame` guarantees the read happens
+     * after the browser has settled layout, and every `setState` happens inside
+     * it — never synchronously in this effect, so it cannot cascade renders.
+     */
+    const runAfter = (delayMs: number) => {
+      cancelPending();
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          firstRequestRef.current = null;
+          measure();
+        });
+      }, delayMs);
+    };
+
+    if (!enabled || !view || typeof ResizeObserver === "undefined") {
+      runAfter(0); // resets to a single unpaginated page (see `measure`)
+      return cancelPending;
+    }
+
+    const observer = new ResizeObserver(() => {
+      // Every resize goes through the same debounce, including the one caused
+      // by our own break spacing landing (the convergence pass). Fast-pathing
+      // that follow-up was tried and reverted: it let the
+      // measure → apply → observe cycle re-enter without settling, leaving
+      // content permanently in motion, and it also gave back most of the
+      // per-keystroke win. Uniform debouncing is what makes the loop quiesce.
+      //
+      // Debounce to the end of a typing burst, but never defer past the max
+      // wait — otherwise sustained input could postpone re-pagination forever.
+      const now = performance.now();
+      firstRequestRef.current ??= now;
+      const deferredFor = now - firstRequestRef.current;
+      runAfter(deferredFor >= REPAGINATE_MAX_WAIT_MS ? 0 : REPAGINATE_IDLE_MS);
+    });
+    observer.observe(view.dom);
+    // First pass: paginate what is already on screen without waiting for input.
+    runAfter(0);
+
+    return () => {
+      observer.disconnect();
+      cancelPending();
+      firstRequestRef.current = null;
     };
   }, [enabled, view, measure]);
 

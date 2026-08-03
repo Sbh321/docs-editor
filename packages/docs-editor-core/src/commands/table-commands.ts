@@ -20,7 +20,7 @@ import type { Dispatch } from "./types";
 /**
  * These wrap `prosemirror-tables`' editing commands (via `../engine`). Unlike
  * the list commands, none take a node-type argument — the table-editing
- * plugin (enabled via `EditorState.create({ tables: true })`) locates the
+ * plugin (enabled via `EditorState.create({ tables: tableEditing })`) locates the
  * current table and cell from the selection. Every one reports `false`
  * (without dispatching) when the selection isn't inside a table, so they
  * compose in a keymap chain and a dry run (calling with no `dispatch`) tells

@@ -36,6 +36,7 @@ import {
   wrapIn,
   wrapInList,
 } from "@sbh321/docs-editor-core";
+import { tableEditing } from "@sbh321/docs-editor-core/tables";
 import { defaultIcons } from "@sbh321/docs-editor-icons";
 import { MarkdownExporter, MarkdownImporter } from "@sbh321/docs-editor-markdown";
 import {
@@ -473,7 +474,7 @@ function createInitialState() {
     doc,
     selection: { anchor: 1, head: 1 },
     history: true,
-    tables: true,
+    tables: tableEditing,
   });
 }
 
@@ -1024,7 +1025,7 @@ export function App() {
   const [instanceKey, setInstanceKey] = useState(0);
 
   const handleImport = useCallback((doc: DocumentNode<NodeName>) => {
-    setSeed(EditorState.create({ schema, doc, history: true, tables: true }));
+    setSeed(EditorState.create({ schema, doc, history: true, tables: tableEditing }));
     setInstanceKey((key) => key + 1);
   }, []);
 

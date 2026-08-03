@@ -23,6 +23,11 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "bench": {
+      "dependsOn": ["^build"],
+      "cache": false,
+      "outputs": []
+    },
     "test:e2e": {
       "dependsOn": ["build"],
       "outputs": ["playwright-report/**"]

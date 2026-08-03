@@ -13,6 +13,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./tables": {
+      "types": "./dist/tables.d.ts",
+      "import": "./dist/tables.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,6 +36,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --build",
     "test": "vitest run",
+    "bench": "vitest bench --run",
     "clean": "rm -rf dist .tsbuild"
   },
   "dependencies": {

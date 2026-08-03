@@ -6,7 +6,6 @@ import { compileEngineSchema } from "./compile-schema";
 import { createEngineHistoryPlugin } from "./history";
 import { fromEngineNode, toEngineNode } from "./node-conversion";
 import { fromEngineSelection, toEngineSelection } from "./selection-conversion";
-import { createEngineTablePlugin } from "./tables";
 
 import type { EngineHistoryOptions } from "./history";
 import type { DocumentNode, Mark, Schema } from "../../schema";
@@ -20,8 +19,18 @@ import type {
 /** Engine-level options controlling which built-in plugins a state installs. */
 export interface EngineStateOptions {
   readonly history?: EngineHistoryOptions;
-  /** Installs the table-editing plugin (cell selection, navigation, table repair). */
-  readonly tables?: boolean;
+  /**
+   * Builds the table-editing plugin (cell selection, navigation, table repair)
+   * to install.
+   *
+   * A factory supplied by the caller rather than a boolean this module resolves
+   * itself: importing the implementation here would tie it to *every* state,
+   * since a reference inside `if (options.tables)` is one no bundler can prove
+   * unreachable. That cost headless bundles the entire table stack — 37.6 KB
+   * gzip — for a feature they never enabled. Returns `unknown` so no engine
+   * type escapes to `src/state/`; it is cast back here.
+   */
+  readonly tables?: () => unknown;
 }
 
 /**
@@ -53,7 +62,7 @@ export function createEngineState<NodeName extends string, MarkName extends stri
     plugins.push(createEngineHistoryPlugin(options.history));
   }
   if (options?.tables) {
-    plugins.push(createEngineTablePlugin());
+    plugins.push(options.tables() as Plugin);
   }
   if (plugins.length > 0) {
     config.plugins = plugins;

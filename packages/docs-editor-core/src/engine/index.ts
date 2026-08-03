@@ -36,6 +36,7 @@ export {
   runEngineWrapIn,
 } from "./prosemirror/commands";
 export { runEngineRedo, runEngineUndo } from "./prosemirror/history";
+export { createEngineTablePlugin } from "./prosemirror/tables";
 export { engineActiveBlock, engineActiveMarks } from "./prosemirror/queries";
 export {
   runEngineLiftListItem,

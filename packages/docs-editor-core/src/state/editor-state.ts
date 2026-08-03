@@ -23,6 +23,7 @@ import { selectionFrom, selectionTo } from "../selection";
 
 import type { ClipboardContent } from "../clipboard";
 import type { EngineState, EngineTransaction } from "../engine";
+import type { EditorPlugin } from "./editor-plugin";
 import type { DocumentNode, Mark, Schema } from "../schema";
 import type { Selection } from "../selection";
 
@@ -173,17 +174,39 @@ export class Transaction<NodeName extends string = string, MarkName extends stri
  */
 export class EditorState<NodeName extends string = string, MarkName extends string = string> {
   readonly schema: Schema<NodeName, MarkName>;
-  readonly doc: DocumentNode<NodeName>;
   readonly selection: Selection;
 
   /** @internal Read by `../commands` to drive engine-backed commands. Not part of the public contract. */
   readonly engine: EngineState;
 
+  /** Memoized result of {@link EditorState.doc}; `null` until first read. */
+  private convertedDoc: DocumentNode<NodeName> | null = null;
+
   private constructor(schema: Schema<NodeName, MarkName>, engine: EngineState) {
     this.schema = schema;
     this.engine = engine;
-    this.doc = engineStateDoc<NodeName>(engine);
     this.selection = engineStateSelection(engine);
+  }
+
+  /**
+   * The current document.
+   *
+   * Computed on first read and then memoized, rather than eagerly in the
+   * constructor: a state is created for *every* transaction — including ones
+   * that only move the cursor — and many of those states are never asked for
+   * their document at all. Deferring the conversion keeps that work off the
+   * per-keystroke path (ROADMAP Phase 6, Milestone 6.2).
+   *
+   * The conversion itself reuses cached results for engine nodes an edit didn't
+   * touch (see `../engine/prosemirror/node-conversion.ts`), so reading this
+   * after a small edit costs roughly the size of the change rather than the size
+   * of the document — and an edit that leaves a subtree alone returns the
+   * identical object for it, which makes `state.doc` identity a valid "did the
+   * document change?" signal for memoization.
+   */
+  get doc(): DocumentNode<NodeName> {
+    this.convertedDoc ??= engineStateDoc<NodeName>(this.engine);
+    return this.convertedDoc;
   }
 
   /**
@@ -199,19 +222,30 @@ export class EditorState<NodeName extends string = string, MarkName extends stri
     readonly history?: boolean | HistoryOptions;
     /**
      * Enables interactive table editing (rectangular cell selection, cell
-     * navigation, table repair). Opt-in like `history`, and only meaningful
-     * for a schema that declares table node types (see `NodeSpec.tableRole`).
+     * navigation, table repair). Only meaningful for a schema that declares
+     * table node types (see `NodeSpec.tableRole`).
+     *
+     * Pass the {@link EditorPlugin} from the `tables` entry point rather than a
+     * flag, so documents that never use tables don't carry the implementation:
+     *
+     * ```ts
+     * import { tableEditing } from "@sbh321/docs-editor-core/tables";
+     * EditorState.create({ schema, doc, tables: tableEditing });
+     * ```
      */
-    readonly tables?: boolean;
+    readonly tables?: EditorPlugin;
   }): EditorState<NodeName, MarkName> {
     const historyOptions = config.history
       ? config.history === true
         ? {}
         : config.history
       : undefined;
+    // Bound to a local so the engine receives a factory that closes over the
+    // plugin, keeping the implementation out of this module's import graph.
+    const tables = config.tables;
     const engine = createEngineState(config.schema, config.doc, config.selection, {
       ...(historyOptions ? { history: historyOptions } : {}),
-      ...(config.tables ? { tables: config.tables } : {}),
+      ...(tables ? { tables: () => tables.createEnginePlugin() } : {}),
     });
     return new EditorState(config.schema, engine);
   }

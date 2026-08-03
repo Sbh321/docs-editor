@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --build",
     "test:e2e": "playwright test",
+    "test:perf": "DOCS_EDITOR_PERF=1 playwright test --reporter=list",
     "clean": "rm -rf dist .tsbuild playwright-report test-results"
   },
   "dependencies": {

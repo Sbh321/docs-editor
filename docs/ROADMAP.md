@@ -1557,30 +1557,492 @@ v0.6.0
 
 Status:
 
-Planned
+**Complete** — all eight milestones (6.1–6.8) shipped. Full methodology,
+baselines, findings and budgets: [docs/PERFORMANCE.md](./PERFORMANCE.md).
+
+Headline results, all measured rather than assumed:
+
+| Metric | Before | After |
+| --- | ---: | ---: |
+| Keystroke `apply`, 5000 paragraphs | 4.588 ms | **0.021 ms** (~218×) |
+| Selection change, any document size | 4.764 ms | **0.0004 ms** (flat) |
+| Headless bundle | 73.5 KB gz | **36.0 KB gz** (−51%) |
+| Pagination cost per keystroke | 2.80 ms | **0.75 ms** (−73%) |
+| Heap over 120 edit/undo cycles | — | +0.6 MB, bounded |
+
+What the phase actually taught, beyond the numbers:
+
+1. **Measure first, and in the right environment.** Two conclusions drawn from
+   jsdom were wrong in a browser: HTML import looked 26× more expensive than
+   JSON import when it is in fact the *faster* of the two (6.7), and the
+   biggest per-keystroke cost turned out to be browser layout, not our code
+   (6.3).
+2. **The bottleneck is rarely where the plan assumed.** 6.4 was scoped to make
+   pagination measurement incremental; measuring showed a full pass costs
+   0.61 ms and the problem was *how often it ran*. The incremental measurement
+   was never built.
+3. **Optimizations must be re-measured, not assumed.** An `offsetTop` swap
+   "for speed" was marginally slower, and a convergence fast-path broke
+   settling entirely — both reverted or re-justified, and recorded so they are
+   not retried.
+4. **Gate only on deterministic signals.** Size budgets fail CI; timings do
+   not, because they reach 25% RME (6.8).
 
 Objective:
 
-Prepare for production-scale documents.
+Prepare Docs Editor for production-scale documents so it stays smooth from a
+one-line note to a 100+ page report, and lock in that behavior with measurement
+and regression guardrails. This phase does not add features — it makes the
+existing ones fast, predictable, and cheap, and preserves that over time.
 
-Deliverables:
+This section expands the roadmap's original seven-line Phase 6 with everything
+the documentation actually asks of performance and scalability — pulled from
+PROJECT_SPEC "Performance First"/"Performance Goals", ARCHITECTURE "Performance
+Strategy"/"Performance Budget"/"Scalability Strategy" (Large Documents, Memory
+Management, Rendering Scalability, Import/Export Scalability, Extension
+Scalability), and CONTRIBUTING "Performance Guidelines". Traceability to those
+requirements is noted per milestone.
 
-- Rendering optimizations
-- Transaction optimization
-- Lazy loading
-- Tree shaking
-- Bundle optimization
-- Performance benchmarks
-- Memory profiling
+## Guiding principles (from the docs)
 
-Exit Criteria:
+- **Measure before optimizing.** CONTRIBUTING: "Avoid optimizing prematurely,
+  but do not ignore performance implications." So a benchmark baseline comes
+  first (6.1); every later milestone is judged against it.
+- **Regressions are architectural issues.** ARCHITECTURE Performance Budget:
+  "Performance regressions should be treated as architectural issues" — so the
+  phase ends with CI guardrails (6.8), not just one-off wins.
+- **No API breakage.** ARCHITECTURE: "Optimizations should preserve API
+  stability and maintainability whenever possible." All Phase 6 work is internal
+  or additive — no public contract changes.
+- **Predictable scaling over peak numbers.** ARCHITECTURE Scalability Strategy:
+  favor solutions "whose performance characteristics remain predictable as
+  documents and feature sets grow" — flat curves beat lucky constants.
+- **Typing latency is sacred.** PROJECT_SPEC: "Typing performance should never
+  degrade regardless of editor complexity." It is the primary metric.
 
-- Smooth editing experience on large documents
-- Performance regressions monitored
+## What already exists (the baseline)
+
+Phase 6 starts from a deliberately performance-friendly base — the job is to
+verify, measure, and close gaps, not to retrofit:
+
+- **Packages are split and tree-shakeable.** Every package sets
+  `sideEffects: false`; core (~18 KB gzip barrel) and react (~12 KB gzip barrel)
+  are small; heavy optional formats ship as separate packages
+  (`docs-editor-markdown`, `docs-editor-docx`) and are lazy-loadable via dynamic
+  `import()` (the playground already does this for DOCX).
+- **Incremental rendering** is inherited from the internal ProseMirror engine
+  (it diffs and mutates only changed DOM); the React adapter is a thin layer
+  over it, with state and dispatch on **separate contexts** so a toolbar button
+  does not re-render when the document changes.
+- **History is bounded** (default depth 100) and undo/redo is event-grouped.
+- **Decorations rebuild is memoized** by source + version, and pagination
+  measurement is convergent (natural coordinates, one settling pass) with its
+  `ResizeObserver` coalesced to one measurement per frame.
+- **Serialization contracts are already async-tolerant** (generalized in Phase
+  5.7), so a future streaming/chunked path is additive, not a redesign.
+
+What is missing is the thing the docs ask for most: a **repeatable way to
+measure** all of this, a set of **large-document fixtures**, and **enforced
+budgets**. That is where the phase begins.
+
+## Milestone 6.1 — Benchmark harness, fixtures & baseline (measure first) ✅
+
+**Complete.** The foundation. Nothing was optimized here — this milestone makes
+performance *observable and repeatable* so every later change is judged against
+a number. Results and method: [docs/PERFORMANCE.md](./PERFORMANCE.md).
+
+- **Large-document fixtures.** A deterministic generator producing documents of
+  configurable scale (e.g. 10 / 100 / 1000 / 5000 paragraphs; 100+ page docs;
+  large tables; hundreds of images; deep nesting; long histories) — matching
+  ARCHITECTURE "Large Documents" and PROJECT_SPEC "Performance Goals".
+- **Micro-benchmarks** for the core hot paths: `EditorState.apply` (single
+  keystroke), transaction construction, JSON/HTML/Markdown/DOCX serialization
+  throughput, decoration set rebuild, and pagination measurement. Runner:
+  Vitest `bench` (already in the toolchain) — no new heavy dependency.
+- **Interaction timing** (playground, Playwright): typing latency, scroll,
+  selection, undo/redo, and paginated-edit latency on a large fixture.
+- **Bundle-size measurement**: per-package gzipped size of the public barrel and
+  a "minimal editor" entry (one command imported), captured as numbers.
+- **Baseline report** committed to `docs/` (a PERFORMANCE.md), recording the
+  starting numbers for typing/transaction/serialization/pagination latency and
+  bundle sizes, plus the method to reproduce them.
+
+Traces: PROJECT_SPEC Performance Goals; ARCHITECTURE Performance Budget
+("continuously monitor and optimize"); ARCHITECTURE Testing "Performance
+Benchmarks".
+
+Exit: reproducible benchmarks + fixtures exist; baseline numbers recorded; the
+harness runs locally (and is CI-ready for 6.8).
+
+## Milestone 6.2 — Transaction & state efficiency (typing latency) ✅
+
+**Complete.** The eager document conversion identified in 6.1 is fixed:
+`EditorState.doc` is now a lazily-computed, memoized getter, and the
+engine→model conversion walks ProseMirror nodes directly (no intermediate
+`toJSON()` tree) with per-node `WeakMap` memoization. Because ProseMirror
+documents are persistent, an edit reuses the identical objects for untouched
+subtrees, so conversion cost tracks the *change* rather than the *document*.
+
+Measured: keystroke `apply` at 5000 paragraphs went 4.588 ms → **0.021 ms**
+(~218×); a selection change is now flat at **0.0004 ms** at every scale
+(~11,900× at `huge`). Locked in by `src/state/structural-sharing.test.ts`.
+
+Bonus: untouched subtrees now keep object identity, so `state.doc` identity is a
+valid change signal and `React.memo`/`useMemo` over document nodes finally skip
+work.
+
+Open follow-up: real-browser typing on a 67-page document did **not** improve
+(~9 ms/keystroke), because `apply` is no longer the bottleneck there —
+pagination was measured at only ~0.7 ms of it, so the remainder is ProseMirror
+DOM reconciliation plus browser layout. That is now 6.3/6.4 work, to be started
+from profiling rather than assumption (see docs/PERFORMANCE.md finding 6).
+
+Original scope — make the per-keystroke path allocation-light and
+re-render-free.
+
+- Profile `EditorState.apply`, `Transaction` construction, and the React
+  reducer under the 6.1 fixtures; remove avoidable per-keystroke allocations and
+  redundant document traversals.
+- Verify (and, if needed, tighten) that dispatching a transaction re-renders
+  only the document consumers — not toolbars, menus, or the page chrome — via
+  the split state/dispatch contexts and stable callback identities.
+- Confirm structural sharing: unchanged subtrees are reused across
+  transactions (the model is immutable) so apply cost tracks the *change* size,
+  not the *document* size.
+
+Traces: PROJECT_SPEC "Performance First" (typing never degrades); ARCHITECTURE
+"Efficient transactions", "Minimal rerenders", "Structural sharing".
+
+Exit: typing latency stays flat as the document grows (target: comfortably
+within one frame per keystroke on a 1000-paragraph doc); no unrelated component
+re-renders on typing (asserted by a test).
+
+## Milestone 6.3 — Rendering efficiency (adapter + view) ✅
+
+**Complete — and the honest outcome is that there was nothing to optimize.**
+
+A V8 sampling profile of typing on a 1000-paragraph document attributes only
+**~2 ms of a ~12.7 ms keystroke to JavaScript we control**; the rest is browser
+layout, paint, and native `Selection.collapse` (which forces a synchronous
+reflow of a very tall document). Combined with 6.1's finding that active-state
+queries are already flat and free, there is no meaningful JS left to remove
+here.
+
+The adapter was therefore audited rather than rewritten, and confirmed correct:
+the view is constructed once and synced via `updateState()`, and
+renderer maps/keymap are captured at mount so inline object literals cannot
+remount it. Both properties are now locked by regression tests in
+`editor.test.tsx` — breaking either would drop DOM selection and IME state on
+every keystroke while still passing every functional test.
+
+Two results carried into later milestones:
+
+- The only real lever on the remaining cost is **rendering less DOM**, which is
+  precisely the viewport-virtualization question in 6.4 — now to be decided on
+  profile data rather than instinct.
+- **Live pagination costs ~2.8 ms/keystroke at human typing speed** (11.45 ms
+  vs 8.65 ms with it off). The earlier "~0.7 ms" figure was an artifact of
+  typing as fast as the harness allows, which lets pagination's per-frame
+  coalescing merge many keystrokes into one measurement. This makes incremental
+  measurement a genuine win and firms up 6.4's scope.
+
+Original scope — ensure the adapter never defeats the engine's incremental DOM,
+and that query/active-state hooks do not thrash.
+
+- Audit that the view is created once and updated via stable props (no view
+  re-creation on unrelated renders); memoize the renderer maps and keymap.
+- Review `useActiveMarks` / `useIsMarkActive` / `useActiveBlockType` re-render
+  frequency; introduce memoized selection-derived selectors so they recompute
+  only when the relevant slice changes.
+- Confirm no full-document re-render on typing, selection, or decoration
+  changes; verify decoration application (search, pagination) redraws only
+  affected ranges.
+
+Traces: ARCHITECTURE "Rendering Scalability" (update only affected portions,
+avoid full re-renders), "Memoization where appropriate", "Avoid unnecessary DOM
+mutations".
+
+Exit: no full-document re-render on common edits; active-state hooks measured
+and bounded; render latency flat with document size.
+
+## Milestone 6.4 — Large-document & pagination performance ✅
+
+**Complete — though not in the way the plan assumed.** The premise was that
+re-scanning every block is the cost, so measurement should become incremental.
+Measured directly, a full pass over 1000 blocks is **0.61 ms** — pagination was
+*scheduling*-bound, not measurement-bound: the pass ran on every keystroke.
+
+Fix: re-paginate when typing **pauses** (120 ms quiet window) with a 500 ms
+ceiling so sustained input cannot starve it. Pagination's per-keystroke cost
+fell from **2.80 ms to 0.75 ms** (~73%), with a deliberate trade — one-off
+pagination after importing a 67-page document went ~220 ms → ~460 ms. Typing is
+continuous and user-facing; import is not, and PROJECT_SPEC is explicit that
+typing must never degrade.
+
+Incremental measurement was therefore **not built**: at 0.61 ms a pass, run once
+per pause instead of per keystroke, it would optimize something that is no
+longer on the critical path. The complexity is not justified by the data.
+
+Two attempts measured and rejected (kept in docs/PERFORMANCE.md so they are not
+retried): swapping `getBoundingClientRect()` for `offsetTop`/`offsetHeight` *for
+speed* (it is marginally slower, not faster — the swap was kept only because it
+removes zoom scale-correction), and fast-pathing the convergence pass to recover
+the slower import (it let the measure → apply → observe cycle re-enter without
+settling, leaving content permanently in motion).
+
+**Viewport virtualization remains deferred**, now on evidence: 6.3's profile
+shows the residual cost is browser layout and native selection sync, and
+virtualizing an editable surface risks selection, find, and scroll correctness.
+It should only be revisited if a concrete large-document complaint survives the
+current numbers.
+
+Original scope — the pagination measurement re-scans every top-level block on
+change; make it incremental and cheap.
+
+- **Incremental measurement**: cache block heights and re-measure only from the
+  first changed block downward instead of the whole document; skip entirely when
+  neither content nor layout affecting geometry changed.
+- Debounce/coalesce measurement under sustained typing; ensure the convergence
+  pass cannot thrash under rapid edits.
+- Stress typing, scrolling, and selection inside a paginated 100-page fixture;
+  keep the editor smooth.
+- **Evaluate viewport virtualization** for very large documents as a documented
+  investigation. Recommendation: keep it a *measured decision* — implement only
+  if 6.1 baselines prove ProseMirror's native rendering insufficient, because
+  virtualizing an editable surface risks selection/scroll/find correctness (see
+  Open decisions).
+
+Traces: ARCHITECTURE "Large Documents", "Rendering Scalability", "Efficient
+document traversal", "Virtualization where appropriate".
+
+Exit: pagination recompute stays within one frame for an edit on a 100-page
+doc; typing in a large paginated document stays smooth; virtualization decision
+recorded with data.
+
+## Milestone 6.5 — Memory management & leak audit ✅
+
+**Complete — audited, measured, and pinned by tests.** No leaks were found, so
+the deliverable is the evidence plus the regression tests that keep it true.
+
+Measured in Chromium on a 1000-paragraph (67-page) document, collecting garbage
+before each reading: 120 edit/undo cycles grew the heap 8.8 → 9.4 MB (4.8
+KB/cycle, the undo history filling to its cap and plateauing), and three full
+document replacements grew it 6.9 → 7.5 MB. Both bounded, not accumulating —
+confirming old documents are collected, including the per-node conversion cache
+from 6.2 whose `WeakMap` keys become unreachable with the engine nodes they key
+on. A whole 67-page document costs roughly 9 MB of heap.
+
+Pinned by tests, because a leak passes every functional test:
+`state/memory-bounds.test.ts` (history depth cap holds as editing continues; 20
+mount/destroy cycles leave no DOM; clearing decorations after destroy is a no-op
+rather than a throw) and `page/pagination-cleanup.test.tsx` (live pagination
+disconnects its `ResizeObserver` and leaves no pending timer or animation frame
+on unmount — a leaked observer would keep firing against a destroyed editor for
+the life of the page).
+
+Original scope — keep memory growth predictable over long sessions.
+
+- Audit teardown: `EditorView.destroy` removes listeners and detaches DOM; the
+  pagination `ResizeObserver` disconnects; decoration holders (a `WeakMap`) do
+  not retain destroyed views; provider effects clean up.
+- Verify history memory is bounded (depth cap) and does not grow unbounded
+  during long editing.
+- Long-session memory profile against a large fixture (repeated edit/undo/redo
+  cycles); add teardown/cleanup regression tests.
+
+Traces: ARCHITECTURE "Memory Management" (no duplicated state, no retained
+detached DOM, no leaks, no unbounded history); CONTRIBUTING "memory usage".
+
+Exit: stable memory across an extended editing session; no retained detached
+nodes or listeners after `destroy`; history provably bounded.
+
+## Milestone 6.6 — Bundle size, tree-shaking & code splitting ✅
+
+**Complete.** 6.1's finding — that a headless bundle (73.5 KB) weighed almost
+the same as a full React editor (74.1 KB) — was traced with a new
+`scripts/explain-bundle.mjs` diagnostic to a single line: `createEngineState`
+statically imported the table-editing plugin to support a `tables: true` flag,
+and a reference inside `if (options.tables)` is one no bundler can prove
+unreachable. Every `EditorState` therefore dragged in `prosemirror-tables` and,
+through it, `prosemirror-view`.
+
+Table editing now lives behind its own entry point and is **passed in** rather
+than switched on:
+
+```ts
+import { EditorState } from "@sbh321/docs-editor-core";
+import { tableEditing } from "@sbh321/docs-editor-core/tables";
+
+EditorState.create({ schema, doc, tables: tableEditing });
+```
+
+| Scenario | Before | After |
+| --- | ---: | ---: |
+| headless (schema + state + one command) | 73.5 KB gz | **36.0 KB gz** (−51%) |
+| react: minimum real editor | 74.1 KB gz | 71.3 KB gz |
+
+**This is a breaking change** — `tables: true` no longer compiles — taken
+deliberately while the package is pre-release, when it is cheapest, and
+justified per CLAUDE.md's breaking-change rules: it is the same principle that
+document says out loud, that plugins should extend the core rather than be baked
+into it. Migration is one import; the table *commands* stay on the main entry.
+The engine boundary is preserved — `EditorPlugin` is opaque and its internals
+are stripped from the published types, so no ProseMirror type crosses the
+boundary.
+
+Tree-shaking is otherwise confirmed working (`createSchema` alone is 24.4 KB
+against 79.4 KB for the full barrel), and the heavy optional formats stay out of
+the core path: Markdown and DOCX are separate packages, and DOCX (263 KB gz —
+3.5× the whole editor) is lazy-loaded via dynamic `import()` in the playground.
+
+Original scope — make the shipped footprint small, measured, and enforced.
+
+- Add a **bundle-size budget** (e.g. `size-limit`) per public package and for a
+  "minimal editor" import, wired to fail on regression.
+- Verify tree-shaking end-to-end: importing a single command/primitive pulls in
+  only its dependencies (barrel exports must not defeat shaking) — the
+  `sideEffects: false` flags are in place; this proves them.
+- Confirm optional heavy features stay out of the core path (Markdown/DOCX are
+  separate packages; document the lazy-load pattern the playground uses).
+- Audit the ProseMirror footprint and the playground's ~630 KB main chunk;
+  document the editor's realistic minimal bundle.
+
+Traces: PROJECT_SPEC "Small bundle size", "Tree-shakeable packages", "Fast
+initial load"; ARCHITECTURE "Lazy loading", "Code splitting", "Tree shaking".
+
+Exit: documented, enforced bundle budgets; tree-shaking verified by a test;
+minimal-editor footprint published.
+
+## Milestone 6.7 — Serialization & import/export performance ✅
+
+**Complete — measured, and nothing needed optimizing.**
+
+6.1's jsdom benchmarks made HTML import look like the clear bottleneck (58.7 ms
+against 2.2 ms for validated JSON import, a 26× gap). Measured in a real browser
+that ranking **inverted**: HTML is the fastest of the three text formats and JSON
+the slowest, because native DOM parsing is quick while JSON's larger payload
+(178 KB vs 71 KB) costs more to parse and re-validate. Benchmarking DOM-touching
+code under jsdom measures jsdom.
+
+End-to-end, user-visible latency for a 1000-paragraph (67-page) document —
+including React re-render, editor remount and re-pagination, not just the codec:
+
+| Format | Export | Import |
+| --- | ---: | ---: |
+| JSON | 91 ms | 114 ms |
+| HTML | 70 ms | 81 ms |
+| Markdown | 81 ms | 87 ms |
+| DOCX | 187 ms (incl. lazy-loading the package) | — |
+
+**Streaming and chunked execution stay deferred**, now on evidence: every format
+finishes an explicit, user-triggered operation in under 200 ms, far below the
+~1 s where progress feedback and cancellation start to matter. Documented
+threshold for revisiting: **~500 ms**, roughly 300+ pages. The Phase 5.7
+contracts are already async-tolerant, so it stays additive.
+
+No inefficiency was fixed here because the one that existed was already gone:
+the engine→model conversion used to traverse and allocate the whole document
+twice, fixed in 6.2. Optimizing further would be premature against this data.
+
+Original scope — measure the cost of moving large documents in and out, and keep
+it off the critical path.
+
+- Benchmark JSON/HTML/Markdown/DOCX export and import on the large fixtures
+  (throughput and main-thread block time).
+- Fix obvious inefficiencies (avoidable copies, repeated traversals) in the
+  exporters/importers.
+- **Streaming/chunked execution decision**: the contracts already allow it
+  (Phase 5.7). Recommendation: keep synchronous implementations, and add
+  chunked/yielding execution only if benchmarks show an unacceptable block at
+  the "100+ page" target — otherwise document the size threshold and defer (as
+  Phase 5 already planned). Record the decision with data.
+
+Traces: ARCHITECTURE "Import and Export Scalability" (streaming, chunked
+processing, progress, cancellation, future background execution); "Serialization
+performance"; CONTRIBUTING "serialization costs".
+
+Exit: serialization throughput measured and acceptable at the 100-page target;
+main-thread block within an agreed budget; streaming decision recorded.
+
+## Milestone 6.8 — Regression guardrails & documentation ✅
+
+**Complete.** `pnpm size:check` enforces a gzip budget for every published
+package and every realistic consumer bundle, and runs in CI after the build —
+a breach fails the workflow and the error points at
+`node scripts/explain-bundle.mjs <package>` to find what pulled the weight in.
+Verified by deliberately breaking a budget and confirming a non-zero exit, so
+the guardrail is known to fire rather than merely assumed to.
+
+`docs/PERFORMANCE.md` carries the methodology, baselines, every finding, the
+budgets, and the measured-and-rejected optimizations.
+
+**One deliberate departure from the plan.** The plan said meaningful regressions
+should fail the build. That is right for *size*, which is deterministic — the
+same inputs produce the same bytes — but wrong for *timing*: the phase's own
+measurements put the largest benchmarks at 25% relative margin of error (6.7),
+and a shared CI runner is worse. Gating on a noisy signal only teaches people to
+ignore the gate. So size is enforced, timings are tracked in PERFORMANCE.md and
+checked by hand when a change needs judging.
+
+Original scope — make the wins durable.
+
+- Wire the 6.1 harness into CI: bundle-size budgets and key benchmarks run on
+  PRs; meaningful regressions fail the build ("regressions are architectural
+  issues").
+- Publish `docs/PERFORMANCE.md`: methodology, baselines, budgets, and how to run
+  the harness locally; note the targets and the deferred items.
+- Update ARCHITECTURE/ROADMAP status and add a changeset; ensure no public API
+  changed.
+
+Traces: ARCHITECTURE Performance Budget ("regressions treated as architectural
+issues"); Testing "Performance Benchmarks", "Regression Tests".
+
+Exit: perf/size regressions are caught in CI; baselines and budgets documented;
+no public API change.
+
+## Deliberately deferred (with rationale)
+
+- **Full editable virtualization** — evaluated in 6.4; only implemented if data
+  demands it, because virtualizing the editable surface risks correctness
+  (selection, scroll restoration, find, print). Default: rely on ProseMirror's
+  native incremental rendering.
+- **Streaming/chunked serialization & background (worker) execution** — the
+  contracts allow it; ships only if 6.7 benchmarks require it, else deferred
+  with a documented threshold. Web Worker offload is a later concern.
+- **Mobile/virtual-keyboard optimization** — ARCHITECTURE lists it under future
+  platforms; out of scope for this phase.
+- **Collaboration/CRDT performance** — a future phase's concern; the
+  architecture already anticipates it.
+
+## Cross-cutting exit criteria (whole phase)
+
+- A reproducible benchmark harness and large-document fixtures exist, with
+  recorded baselines (6.1) and CI enforcement (6.8)
+- Typing latency stays flat as the document grows to 100+ pages / thousands of
+  paragraphs (PROJECT_SPEC Performance Goals)
+- Common edits (typing, selection, formatting, undo/redo, scrolling) never
+  trigger a full-document re-render; only affected regions update
+- Memory is stable over extended sessions; no leaks or unbounded history
+- Bundle budgets are documented and enforced; tree-shaking is verified; optional
+  formats stay out of the core path
+- No public API changed; all packages build, lint, typecheck, and test clean
+  (unit + Playwright e2e + benchmarks)
+
+## Open decisions to confirm before implementation
+
+1. **Benchmark tooling** — Vitest `bench` for micro-benchmarks + Playwright for
+   interaction timing (recommended, no new heavy deps) vs a dedicated tool
+   (e.g. Tinybench/Tachometer).
+2. **Virtualization** — evaluate-and-likely-defer (recommended) vs commit to
+   implementing viewport virtualization this phase.
+3. **Streaming serialization** — measure-and-defer with a documented threshold
+   (recommended) vs implement chunked/async export now.
+4. **CI perf gating strictness** — fail the build on regression (recommended,
+   per the docs) vs report-only initially.
 
 Target Version:
 
-v0.6.0
+v0.7.0
 
 ---
 

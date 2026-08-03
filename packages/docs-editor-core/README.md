@@ -88,7 +88,7 @@ node catalog:
   cell types a shared `group` and using that in the row's content (e.g. both
   declare `group: "tablecell"`, and `table_row` has `content: "tablecell+"`) —
   the matcher resolves group references. Enabling *interactive* table editing
-  is a separate opt-in — `EditorState.create({ tables: true })` (see
+  is a separate opt-in — `EditorState.create({ tables: tableEditing })` (see
   [State](#state)) — and the row/column/merge operations live in
   [Commands](#commands).
 
@@ -207,17 +207,30 @@ being opt-in:
 const state = EditorState.create({ schema, doc, history: true });
 ```
 
-Pass `tables: true` (same opt-in shape) to enable interactive table editing —
-rectangular cell selection by dragging or Shift-arrow, arrow-key navigation
-across cells, and automatic repair of malformed tables. It's only meaningful
-for a schema that declares table node types (see [Schema](#schema)), and it's
-what makes the `type: "cell"` selection kind and the table commands work in a
-live view. A schema with no tables should leave it off so it carries none of
-that machinery:
+Interactive table editing — rectangular cell selection by dragging or
+Shift-arrow, arrow-key navigation across cells, and automatic repair of
+malformed tables — is enabled by passing the plugin from the `tables` entry
+point. It's only meaningful for a schema that declares table node types (see
+[Schema](#schema)), and it's what makes the `type: "cell"` selection kind and
+the table commands work in a live view:
 
 ```ts
-const state = EditorState.create({ schema, doc, tables: true });
+import { EditorState } from "@sbh321/docs-editor-core";
+import { tableEditing } from "@sbh321/docs-editor-core/tables";
+
+const state = EditorState.create({ schema, doc, tables: tableEditing });
 ```
+
+It is *passed in* rather than switched on with a flag so that a schema without
+tables carries none of the machinery. A boolean would force this package to
+import the implementation unconditionally — the reference would sit in a branch
+no bundler can prove unreachable — which cost headless bundles 37.6 KB gzip,
+51% of their size, for a feature they never enabled. See
+[docs/PERFORMANCE.md](../../docs/PERFORMANCE.md).
+
+> **Migration:** `tables: true` was replaced by `tables: tableEditing` in Phase
+> 6. The change is one import; the table *commands* (`addRowAfter`,
+> `mergeCells`, …) remain on the main entry point.
 
 ## Commands
 
@@ -320,7 +333,7 @@ The table commands — `addColumnBefore`, `addColumnAfter`, `deleteColumn`,
 `toggleHeaderRow`, `toggleHeaderColumn`, `deleteTable` — wrap
 [`prosemirror-tables`](https://www.npmjs.com/package/prosemirror-tables) (via
 `../engine`). Unlike the list commands they take no node-type argument: the
-table-editing plugin (enabled with `EditorState.create({ tables: true })`)
+table-editing plugin (enabled with `EditorState.create({ tables: tableEditing })`)
 finds the current table and cell from the selection. Each reports `false`
 without dispatching when the selection isn't in a table, so they compose in a
 keymap and drive enabled/disabled toolbar buttons via a dry run.

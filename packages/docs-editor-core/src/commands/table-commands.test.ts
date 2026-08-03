@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createFixtureSchema } from "../schema/schema.fixtures";
 import { EditorState } from "../state";
+import { tableEditing } from "../tables";
 
 import {
   addColumnAfter,
@@ -14,7 +15,7 @@ import {
 } from "./table-commands";
 
 /**
- * Builds a 2x2 table state with `tables: true`. Cell positions in this doc:
+ * Builds a 2x2 table state with `tables: tableEditing`. Cell positions in this doc:
  * the first row's cells sit at positions 2 and 6, and a cursor at position 4
  * lands inside the first cell's paragraph text.
  */
@@ -28,13 +29,23 @@ function createTableState() {
   const doc = schema.createDocument([
     schema.node("table", undefined, [row("A", "B"), row("C", "D")]),
   ]);
-  return EditorState.create({ schema, doc, selection: { anchor: 4, head: 4 }, tables: true });
+  return EditorState.create({
+    schema,
+    doc,
+    selection: { anchor: 4, head: 4 },
+    tables: tableEditing,
+  });
 }
 
 function createParagraphState() {
   const schema = createFixtureSchema();
   const doc = schema.createDocument([schema.node("paragraph", undefined, [schema.text("Hello")])]);
-  return EditorState.create({ schema, doc, selection: { anchor: 1, head: 1 }, tables: true });
+  return EditorState.create({
+    schema,
+    doc,
+    selection: { anchor: 1, head: 1 },
+    tables: tableEditing,
+  });
 }
 
 describe("table commands", () => {

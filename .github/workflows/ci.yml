@@ -42,6 +42,14 @@ jobs:
       - name: Build
         run: pnpm turbo run build
 
+      # Bundle size is deterministic, so it is safe to fail a build on.
+      # The timing benchmarks (`pnpm bench`) are deliberately *not* gated —
+      # they reach 25% relative margin of error on a shared CI runner, and
+      # gating on a noisy signal only teaches people to ignore it. Run them
+      # locally when judging a change; see docs/PERFORMANCE.md.
+      - name: Bundle size budgets
+        run: pnpm size:check
+
   e2e:
     name: Playwright e2e
     runs-on: ubuntu-latest
