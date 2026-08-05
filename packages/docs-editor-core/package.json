@@ -1,6 +1,6 @@
 {
   "name": "@sbh321/docs-editor-core",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Framework-agnostic document editing engine for Docs Editor.",
   "license": "MIT",
   "type": "module",

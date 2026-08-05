@@ -1,6 +1,6 @@
 {
   "name": "@sbh321/docs-editor-docx",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "DOCX (Microsoft Word) import/export for Docs Editor.",
   "license": "MIT",
   "type": "module",

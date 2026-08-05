@@ -1,6 +1,6 @@
 {
   "name": "@sbh321/docs-editor-react",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "React adapter for Docs Editor.",
   "license": "MIT",
   "type": "module",

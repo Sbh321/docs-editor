@@ -1,6 +1,6 @@
 {
   "name": "@sbh321/docs-editor-icons",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Optional default icon set for Docs Editor's headless UI components.",
   "license": "MIT",
   "type": "module",
