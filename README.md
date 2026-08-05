@@ -3,10 +3,6 @@
 > A professional, headless, framework-agnostic document editor — with batteries
 > included when you want them.
 
-```bash
-npm install @sbh321/docs-editor
-```
-
 ```tsx
 import { DocsEditor } from "@sbh321/docs-editor";
 import "@sbh321/docs-editor/styles.css";
@@ -14,47 +10,112 @@ import "@sbh321/docs-editor/styles.css";
 export default () => <DocsEditor />;
 ```
 
-That is a complete editor: a full document schema, a toolbar, an outline
-sidebar, a paginated A4 page, media with uploads and resizing, find and replace,
-a status bar, and light and dark themes that follow the operating system. No
-configuration.
+## Introduction
 
 Docs Editor is a reusable editing engine — not a note-taking app, not a SaaS,
-not a CMS. See [docs/PROJECT_SPEC.md](./docs/PROJECT_SPEC.md) for the vision and
-[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the engineering design.
+not a CMS. Install one package, render one component, and you have a complete
+document editor:
 
-**Status:** Phases 0–8 complete. Editor core, React adapter, rich editing,
-headless UI, import/export (HTML, Markdown, DOCX, print), performance work,
-media, and the batteries-included layer. See
-[docs/ROADMAP.md](./docs/ROADMAP.md).
+- A full document schema: headings, lists, task lists, tables, quotes, code,
+  media (images, video, audio, files, embeds) with captions
+- A toolbar with rich formatting — fonts, font size in points, colors,
+  alignment, indentation, links, clear formatting
+- A File menu: import and export as Markdown, HTML, JSON and DOCX, plus print
+- A paginated A4 page with configurable size, orientation and margins
+- Media uploads with progress, drag-and-drop, and drag-to-move blocks
+- Find and replace, a slash menu, zoom, a status bar
+- Light and dark themes that follow the operating system
 
-## Which layer should I use?
+No configuration required — and no lock-in when you outgrow the defaults.
+Three layers, in descending order of control; drop down whenever the one above
+stops fitting, without forking:
 
-Three layers, in descending order of control. Drop down whenever the one above
-stops fitting — you never have to fork to customise.
-
-| You want | Use |
-| --- | --- |
-| A working editor | `@sbh321/docs-editor` → `<DocsEditor />` |
+| You want                | Use                                            |
+| ----------------------- | ---------------------------------------------- |
+| A working editor        | `@sbh321/docs-editor` → `<DocsEditor />`       |
 | Our chrome, your layout | `@sbh321/docs-editor` → `EditorShell` + surfaces |
-| Your own design system | `@sbh321/docs-editor-react` primitives |
-| No framework at all | `@sbh321/docs-editor-core` |
+| Your own design system  | `@sbh321/docs-editor-react` primitives         |
+| No framework at all     | `@sbh321/docs-editor-core`                     |
 
 **Nobody pays for a layer they do not import.** An application using the
 headless primitives with its own design system downloads none of the styled UI,
 none of the default schema, and no icons — verified by the size budgets in
 [docs/PERFORMANCE.md](./docs/PERFORMANCE.md), which CI enforces.
 
-### Customising
+See [docs/PROJECT_SPEC.md](./docs/PROJECT_SPEC.md) for the vision and
+[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the engineering design.
+
+**Status:** v0.1.0, published to npm. Phases 0–9 complete: editor core, React
+adapter, rich editing, headless UI, import/export, performance work, media, the
+batteries-included layer, and rich formatting. See
+[docs/ROADMAP.md](./docs/ROADMAP.md).
+
+## Installation
+
+Requires React 19. Pick your package manager:
+
+```bash
+# npm
+npm install @sbh321/docs-editor
+
+# yarn
+yarn add @sbh321/docs-editor
+
+# pnpm
+pnpm add @sbh321/docs-editor
+```
+
+Then render the editor and import its stylesheet once:
+
+```tsx
+import { DocsEditor } from "@sbh321/docs-editor";
+import "@sbh321/docs-editor/styles.css";
+
+export default function App() {
+  return <DocsEditor />;
+}
+```
+
+The editor fills its container, so give it room — typically:
+
+```css
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+```
+
+Building headless instead? Install only the layers you use:
+
+```bash
+# React adapter + headless (unstyled) UI primitives
+npm install @sbh321/docs-editor-react
+
+# Framework-agnostic engine only
+npm install @sbh321/docs-editor-core
+
+# Optional add-ons
+npm install @sbh321/docs-editor-markdown   # Markdown import/export
+npm install @sbh321/docs-editor-docx      # DOCX (Word) import/export
+npm install @sbh321/docs-editor-icons     # default icon set
+```
+
+## Customizing
+
+Everything on `<DocsEditor />` is a prop with a working default:
 
 ```tsx
 <DocsEditor
-  initialDocument={doc}
+  initialDocument={doc}      // the document to open (read once, on mount)
   onChange={save}            // receives a plain DocumentNode, not editor state
   uploader={myUploader}      // you move the bytes; the editor does the rest
   toolbarExtras={<Share />}  // your controls, inside the editor's providers
   readOnly={!canEdit}
-  sidebar={null}             // or your own
+  fileMenu={false}           // hide import/export/print
+  paginate={false}           // single continuous page
+  sidebar={null}             // or your own panel
 />
 ```
 
@@ -77,20 +138,26 @@ const schema = extendDefaultSchema({
 });
 ```
 
+And when the styled editor itself stops fitting, drop a layer: compose
+`EditorShell` and the styled surfaces yourself, rebuild the UI from the
+`@sbh321/docs-editor-react` primitives, or drive `@sbh321/docs-editor-core`
+directly with no framework at all. Every control in the shipped UI delegates to
+a core command, so nothing is lost on the way down.
+
 ## Packages
 
-| Package | Description |
-| --- | --- |
-| [`docs-editor`](./packages/docs-editor-ui) | `@sbh321/docs-editor` — batteries included: styled UI and `<DocsEditor />` |
-| [`docs-editor-core`](./packages/docs-editor-core) | `@sbh321/docs-editor-core` — framework-agnostic editor engine |
-| [`docs-editor-react`](./packages/docs-editor-react) | `@sbh321/docs-editor-react` — React adapter + headless UI |
-| [`docs-editor-icons`](./packages/docs-editor-icons) | `@sbh321/docs-editor-icons` — optional default icon set |
-| [`docs-editor-markdown`](./packages/docs-editor-markdown) | `@sbh321/docs-editor-markdown` — Markdown import/export |
-| [`docs-editor-docx`](./packages/docs-editor-docx) | `@sbh321/docs-editor-docx` — DOCX (Word) import/export |
-| [`apps/playground-react`](./apps/playground-react) | Dev app: `<DocsEditor uploader={…} />` and nothing else — the out-of-box promise, executed literally |
-| [`examples/basic-react`](./examples/basic-react) | The three-line integration (Vite) |
-| [`examples/basic-next`](./examples/basic-next) | Next.js App Router integration |
-| [`tooling/*`](./tooling) | Shared TypeScript and ESLint configuration |
+| Package                                                     | Description                                                                            |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| [`docs-editor`](./packages/docs-editor-ui)                  | `@sbh321/docs-editor` — batteries included: styled UI and `<DocsEditor />`             |
+| [`docs-editor-core`](./packages/docs-editor-core)           | `@sbh321/docs-editor-core` — framework-agnostic editor engine                          |
+| [`docs-editor-react`](./packages/docs-editor-react)         | `@sbh321/docs-editor-react` — React adapter + headless UI                              |
+| [`docs-editor-icons`](./packages/docs-editor-icons)         | `@sbh321/docs-editor-icons` — optional default icon set                                |
+| [`docs-editor-markdown`](./packages/docs-editor-markdown)   | `@sbh321/docs-editor-markdown` — Markdown import/export                                |
+| [`docs-editor-docx`](./packages/docs-editor-docx)           | `@sbh321/docs-editor-docx` — DOCX (Word) import/export                                 |
+| [`apps/playground-react`](./apps/playground-react)          | Dev app: `<DocsEditor uploader={…} />` and nothing else — the out-of-box promise, executed literally |
+| [`examples/basic-react`](./examples/basic-react)            | The three-line integration (Vite)                                                      |
+| [`examples/basic-next`](./examples/basic-next)              | Next.js App Router integration                                                         |
+| [`tooling/*`](./tooling)                                    | Shared TypeScript and ESLint configuration                                             |
 
 Two entry points sit behind `@sbh321/docs-editor-core` so a consumer who does
 not use them pays nothing: `/preset` (the default schema, renderers, parse rules
