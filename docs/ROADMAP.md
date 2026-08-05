@@ -53,11 +53,12 @@ Project Phase:
 
 Current Version:
 
-Not Released
+v0.1.0 — published to npm on 2026-08-05 (`@sbh321/docs-editor` and its five
+supporting packages)
 
 Target First Release:
 
-v0.1.0
+v0.1.0 ✅
 
 ---
 
