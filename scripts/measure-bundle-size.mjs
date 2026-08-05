@@ -47,11 +47,12 @@ const RESOLVE_DIR = resolve(ROOT, "apps/playground-react");
 
 /** Packages whose built output is measured as published, with their gzip budgets (KB). */
 const PACKAGES = [
-  { name: "docs-editor-core", budgetKB: 23 },
-  { name: "docs-editor-react", budgetKB: 15 },
+  { name: "docs-editor-core", budgetKB: 44 },
+  { name: "docs-editor-react", budgetKB: 20 },
   { name: "docs-editor-icons", budgetKB: 3 },
-  { name: "docs-editor-markdown", budgetKB: 4 },
+  { name: "docs-editor-markdown", budgetKB: 5 },
   { name: "docs-editor-docx", budgetKB: 5 },
+  { name: "docs-editor-ui", budgetKB: 21 },
 ];
 
 /**
@@ -61,7 +62,7 @@ const PACKAGES = [
 const SCENARIOS = [
   {
     name: "minimal: schema only",
-    budgetKB: 30,
+    budgetKB: 24,
     description: "createSchema — the document model with no editor",
     contents: `export { createSchema } from "@sbh321/docs-editor-core";`,
   },
@@ -74,8 +75,38 @@ const SCENARIOS = [
     `,
   },
   {
+    name: "minimal: editor, no media",
+    budgetKB: 38,
+    description: "a real editing setup that imports no media — the media-isolation control",
+    contents: `
+      export { createSchema, EditorState, toggleMark, undo, redo } from "@sbh321/docs-editor-core";
+    `,
+  },
+  {
+    name: "media: schema + commands",
+    budgetKB: 42,
+    description: "the same, plus the media catalog — the delta is what media costs",
+    contents: `
+      export {
+        createSchema, EditorState, toggleMark, undo, redo,
+        mediaNodeSpecs, insertMedia, removeMedia, setMediaAlignment,
+        mediaNodeRenderers, MediaUploadRegistry,
+      } from "@sbh321/docs-editor-core";
+    `,
+  },
+  {
+    name: "preset: default schema",
+    budgetKB: 47,
+    description: "the batteries-included schema + renderers + parse spec + keymap",
+    contents: `
+      export { defaultSchema, defaultKeymap, defaultNodeRenderers, defaultParseSpec }
+        from "@sbh321/docs-editor-core/preset";
+      export { EditorState } from "@sbh321/docs-editor-core";
+    `,
+  },
+  {
     name: "core: full barrel",
-    budgetKB: 90,
+    budgetKB: 95,
     description: "everything exported from docs-editor-core",
     contents: `export * from "@sbh321/docs-editor-core";`,
   },
@@ -89,9 +120,18 @@ const SCENARIOS = [
   },
   {
     name: "react: full barrel",
-    budgetKB: 105,
+    budgetKB: 110,
     description: "everything exported from docs-editor-react (incl. core)",
     contents: `export * from "@sbh321/docs-editor-react";`,
+  },
+  {
+    name: "ui: styled primitives",
+    budgetKB: 30,
+    description: "@sbh321/docs-editor primitives alone — they tree-shake free of the editor",
+    contents: `
+      export { Button, Dialog, DropdownMenu, Input, Popover, Select, Tooltip }
+        from "@sbh321/docs-editor";
+    `,
   },
   {
     name: "markdown package",

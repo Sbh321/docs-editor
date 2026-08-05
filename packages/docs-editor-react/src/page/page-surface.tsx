@@ -1,4 +1,5 @@
 import { marginsToCss, toCssLength } from "@sbh321/docs-editor-core";
+import { useEffect, useRef } from "react";
 
 import { useThemeClassName } from "../theme/use-theme";
 
@@ -53,13 +54,67 @@ function footerText(layout: PageLayout, pageNumber: number): string {
  * `pageCanvas`/`page`/`pageHeader`/`pageFooter` theme classes.
  */
 export function PageSurface(props: PageSurfaceProps): ReactNode {
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const { layout, dimensions } = usePageLayout();
   const { pageCount } = usePagination(props.paginate ?? false);
 
   const canvasClassName = useThemeClassName("pageCanvas");
   const pageClassName = useThemeClassName("page");
+  const contentClassName = useThemeClassName("pageContent");
   const headerClassName = useThemeClassName("pageHeader");
   const footerClassName = useThemeClassName("pageFooter");
+
+  /**
+   * Keeps a click on the page from dropping the caret.
+   *
+   * The editable fills the text column, but a page also has margins, and a
+   * canvas around it. Clicking either used to blur the editor — the caret
+   * vanished and the user had to click back into the text to carry on typing,
+   * which is not how paper behaves and not how any document editor behaves.
+   *
+   * `preventDefault` on mousedown is what stops the focus change; the editor is
+   * then focused explicitly for the case where it did not have focus already.
+   * The caret is deliberately *not* moved: placing it accurately from a
+   * coordinate needs the engine's hit-testing, and jumping it to the end of the
+   * document would be worse than leaving it where it was.
+   *
+   * A native listener rather than an `onMouseDown` prop, because that is what
+   * this is — suppressing a browser default on an element that is not, and must
+   * not become, an interactive control. There is no keyboard equivalent to add:
+   * a keyboard user cannot lose focus this way.
+   */
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      return;
+    }
+
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target || target.closest("[contenteditable='true']")) {
+        return;
+      }
+      // Anything the consumer put in the margins — a header field, a comment
+      // marker — keeps its own click behaviour.
+      if (target.closest("a, button, input, select, textarea, [tabindex]")) {
+        return;
+      }
+
+      const editable = canvas.querySelector<HTMLElement>("[contenteditable='true']");
+      if (!editable) {
+        return;
+      }
+      event.preventDefault();
+      if (document.activeElement !== editable) {
+        editable.focus();
+      }
+    };
+
+    canvas.addEventListener("mousedown", onMouseDown);
+    return () => {
+      canvas.removeEventListener("mousedown", onMouseDown);
+    };
+  }, []);
 
   const { margins } = layout;
   const topInset = toCssLength(margins.top, margins.unit);
@@ -98,9 +153,9 @@ export function PageSurface(props: PageSurfaceProps): ReactNode {
   // Single continuous sheet.
   if (!props.paginate) {
     return (
-      <div className={cx(canvasClassName, props.className)} style={props.style}>
+      <div ref={canvasRef} className={cx(canvasClassName, props.className)} style={props.style}>
         <div
-          className={pageClassName}
+          className={cx(pageClassName, contentClassName)}
           style={{
             width: toCssLength(dimensions.width, dimensions.unit),
             minHeight: toCssLength(dimensions.height, dimensions.unit),
@@ -130,7 +185,7 @@ export function PageSurface(props: PageSurfaceProps): ReactNode {
   const stackHeightPx = pageCount * pageHeightPx + (pageCount - 1) * PAGE_GAP_PX;
 
   return (
-    <div className={cx(canvasClassName, props.className)} style={props.style}>
+    <div ref={canvasRef} className={cx(canvasClassName, props.className)} style={props.style}>
       <div style={{ position: "relative", width: pageWidthPx, height: stackHeightPx }}>
         {Array.from({ length: pageCount }, (_, index) => (
           <div
@@ -150,6 +205,7 @@ export function PageSurface(props: PageSurfaceProps): ReactNode {
           </div>
         ))}
         <div
+          className={contentClassName}
           style={{
             position: "absolute",
             top: topPx,

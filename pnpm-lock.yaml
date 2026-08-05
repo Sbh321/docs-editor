@@ -53,6 +53,9 @@ importers:
 
   apps/playground-react:
     dependencies:
+      '@sbh321/docs-editor':
+        specifier: workspace:*
+        version: link:../../packages/docs-editor-ui
       '@sbh321/docs-editor-core':
         specifier: workspace:*
         version: link:../../packages/docs-editor-core
@@ -136,6 +139,9 @@ importers:
 
   examples/basic-react:
     dependencies:
+      '@sbh321/docs-editor':
+        specifier: workspace:*
+        version: link:../../packages/docs-editor-ui
       '@sbh321/docs-editor-core':
         specifier: workspace:*
         version: link:../../packages/docs-editor-core
@@ -333,6 +339,61 @@ importers:
       storybook:
         specifier: 10.5.0
         version: 10.5.0(@types/react@19.2.17)(prettier@3.9.5)(react@19.2.7)
+
+  packages/docs-editor-ui:
+    dependencies:
+      '@floating-ui/react':
+        specifier: 0.27.16
+        version: 0.27.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@sbh321/docs-editor-core':
+        specifier: workspace:*
+        version: link:../docs-editor-core
+      '@sbh321/docs-editor-docx':
+        specifier: workspace:*
+        version: link:../docs-editor-docx
+      '@sbh321/docs-editor-icons':
+        specifier: workspace:*
+        version: link:../docs-editor-icons
+      '@sbh321/docs-editor-markdown':
+        specifier: workspace:*
+        version: link:../docs-editor-markdown
+      '@sbh321/docs-editor-react':
+        specifier: workspace:*
+        version: link:../docs-editor-react
+    devDependencies:
+      '@docs-editor/eslint-config':
+        specifier: workspace:*
+        version: link:../../tooling/eslint-config
+      '@docs-editor/typescript-config':
+        specifier: workspace:*
+        version: link:../../tooling/typescript-config
+      '@testing-library/dom':
+        specifier: 10.4.1
+        version: 10.4.1
+      '@testing-library/jest-dom':
+        specifier: 6.9.1
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: 16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      '@types/node':
+        specifier: 26.1.1
+        version: 26.1.1
+      '@types/react':
+        specifier: 19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: 19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      jsdom:
+        specifier: 29.1.1
+        version: 29.1.1
+      react:
+        specifier: 19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: 19.2.7
+        version: 19.2.7(react@19.2.7)
 
   tooling/eslint-config:
     dependencies:

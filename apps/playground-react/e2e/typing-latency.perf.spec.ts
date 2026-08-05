@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 
+import { loadMarkdownDocument } from "./load-document";
+import { toolbarControl } from "./toolbar";
+
 import type { Page } from "@playwright/test";
 
 /**
@@ -40,9 +43,7 @@ async function loadDocument(page: Page, paragraphs: number) {
   if (paragraphs === 0) {
     return;
   }
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill(markdownDocument(paragraphs));
-  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await loadMarkdownDocument(page, markdownDocument(paragraphs));
   // Let the import settle (pagination measures and converges).
   await page.waitForTimeout(1500);
 }
@@ -52,7 +53,7 @@ for (const scale of SCALES) {
     await page.goto("/");
     await loadDocument(page, scale.paragraphs);
 
-    const editable = page.locator(".playground-editor [contenteditable='true']");
+    const editable = page.locator(".de-editor [contenteditable='true']");
     await editable.click();
     await page.waitForTimeout(200);
 
@@ -87,7 +88,7 @@ test("typing latency — large (1000 paragraphs), live pagination OFF", async ({
   await page.getByLabel("Live pagination").uncheck();
   await page.waitForTimeout(500);
 
-  const editable = page.locator(".playground-editor [contenteditable='true']");
+  const editable = page.locator(".de-editor [contenteditable='true']");
   await editable.click();
   await page.waitForTimeout(200);
   await page.keyboard.type("warmup", { delay: 0 });
@@ -129,7 +130,7 @@ for (const paginate of [true, false] as const) {
       await page.waitForTimeout(500);
     }
 
-    const editable = page.locator(".playground-editor [contenteditable='true']");
+    const editable = page.locator(".de-editor [contenteditable='true']");
     await editable.click();
     await page.waitForTimeout(200);
     await page.keyboard.type("warm", { delay: HUMAN_DELAY_MS });
@@ -154,18 +155,28 @@ for (const paginate of [true, false] as const) {
 test("document import + pagination settle time", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill(markdownDocument(1000));
+  // Timed from answering the file chooser, which is where a user's wait
+  // starts; the sheet class is the package's since the playground stopped
+  // owning any page markup.
+  await (await toolbarControl(page, "File")).click();
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByRole("menuitem", { name: "Import…" }).click();
 
   const started = Date.now();
-  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await (
+    await chooser
+  ).setFiles({
+    name: "large.md",
+    mimeType: "text/markdown",
+    buffer: Buffer.from(markdownDocument(1000), "utf8"),
+  });
   // Wait until the multi-page backdrop reflects the imported document.
   await expect(async () => {
-    expect(await page.locator(".pg-page").count()).toBeGreaterThan(5);
+    expect(await page.locator(".de-page").count()).toBeGreaterThan(5);
   }).toPass({ timeout: 30_000 });
   const elapsed = Date.now() - started;
 
-  const pages = await page.locator(".pg-page").count();
+  const pages = await page.locator(".de-page").count();
   console.log(`[perf] import 1000 paragraphs + paginate to ${pages} pages: ${elapsed} ms`);
 
   expect(pages).toBeGreaterThan(5);

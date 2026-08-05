@@ -138,12 +138,19 @@ export function usePagination(enabled: boolean): PaginationResult {
       if (!el) {
         continue;
       }
-      // Subtract the spacing already applied above this block to recover its
-      // *natural* position — spacing-independent, so the computation converges
+      // Recover the block's *natural* geometry by subtracting the spacing
+      // already applied — spacing-independent, so the computation converges
       // instead of feeding back on itself.
-      cumulativeApplied += applied.get(index) ?? 0;
+      //
+      // Spacers are `padding-top`, and padding sits *inside* the block: it
+      // grows the block's height and pushes everything below, but does not
+      // move the block's own box top. So a block's own spacer is subtracted
+      // from its height, while only the spacers *above* it are subtracted
+      // from its position.
+      const ownApplied = applied.get(index) ?? 0;
       const naturalTop = el.offsetTop - origin - cumulativeApplied;
-      const height = el.offsetHeight;
+      const height = el.offsetHeight - ownApplied;
+      cumulativeApplied += ownApplied;
 
       const effTop = naturalTop + addedOffset;
       const effBottom = effTop + height;
@@ -185,7 +192,17 @@ export function usePagination(enabled: boolean): PaginationResult {
         from,
         to,
         type: "node",
-        attributes: { style: `margin-top: ${Math.round(spacer)}px` },
+        // `padding-top`, very deliberately not `margin-top`. The document
+        // stylesheet expresses block rhythm as `margin-top` (0.75em on a
+        // paragraph, 1.6em on a heading), so an inline margin spacer
+        // *overwrote* a value that differed per block type — the applied
+        // spacing came out short by an amount the natural-position recovery
+        // never saw, and whenever a block sat within that error of a page
+        // boundary the break placement flip-flopped every pass. That was the
+        // visible snapping when typing near the bottom margin. Padding is
+        // purely additive: it collapses with nothing and overrides nothing,
+        // so applied spacing is exact and the recovery converges.
+        attributes: { style: `padding-top: ${Math.round(spacer)}px` },
       });
     }
     setDecorations(nextDecorations);

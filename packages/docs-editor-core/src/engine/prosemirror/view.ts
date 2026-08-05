@@ -2,12 +2,13 @@ import { keydownHandler } from "prosemirror-keymap";
 import { EditorView as ProseMirrorEditorView } from "prosemirror-view";
 
 import { createDecorationHolder, resolveDecorationSet, setHolderDecorations } from "./decorations";
-import { createGenericMarkView, createGenericNodeView } from "./node-view";
+import { createCustomNodeView, createGenericMarkView, createGenericNodeView } from "./node-view";
 
 import type { DecorationHolder } from "./decorations";
 import type { EngineState, EngineTransaction } from "./state";
 import type { Decoration } from "../../decoration";
 import type { DOMOutputSpec } from "../../dom-output-spec";
+import type { NodeViewFactory } from "../../node-view";
 import type { DocumentNode, Mark } from "../../schema";
 import type { DirectEditorProps } from "prosemirror-view";
 
@@ -31,6 +32,11 @@ export interface EngineViewOptions {
   readonly editable?: boolean;
   /** Overrides the schema's generic default rendering for specific node types, keyed by name. */
   readonly nodeRenderers?: Readonly<Record<string, (node: DocumentNode) => DOMOutputSpec>>;
+  /**
+   * Custom node views by type, taking precedence over `nodeRenderers` for the
+   * same type — a view owns its node's DOM entirely.
+   */
+  readonly nodeViews?: Readonly<Record<string, NodeViewFactory>>;
   /** Overrides the schema's generic default rendering for specific mark types, keyed by name. */
   readonly markRenderers?: Readonly<Record<string, (mark: Mark) => DOMOutputSpec>>;
   /**
@@ -68,14 +74,19 @@ export function createEngineView(
     const { editable } = options;
     props.editable = () => editable;
   }
-  if (options.nodeRenderers) {
-    const { nodeRenderers } = options;
+  if (options.nodeRenderers || options.nodeViews) {
+    const nodeRenderers = options.nodeRenderers ?? {};
     const nodeViews: DirectEditorProps["nodeViews"] = {};
     for (const name of Object.keys(nodeRenderers)) {
       const render = nodeRenderers[name];
       if (render) {
         nodeViews[name] = (node) => createGenericNodeView(node, render);
       }
+    }
+    // Custom views win over generic renderers for the same type: a view owns
+    // its node's DOM, so a renderer for it would never be consulted anyway.
+    for (const [name, factory] of Object.entries(options.nodeViews ?? {})) {
+      nodeViews[name] = (node, _view, getPos) => createCustomNodeView(node, getPos, factory);
     }
     props.nodeViews = nodeViews;
   }

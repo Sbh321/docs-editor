@@ -263,6 +263,59 @@ editing commands (`splitBlock`, `joinBackward`/`joinForward`, `joinUp`/
 this mark" ourselves — the same encapsulation rule applies: nothing outside
 `src/engine/` imports it directly.
 
+### Paragraph formatting, links, lists and node movement (Phase 9)
+
+Alignment and indentation are **block attributes**, not marks — a mark can cover
+half a paragraph, and "the left half of this paragraph is centred" has no
+meaning. Spread `paragraphFormattingAttrs()` into a block node's `attrs` to make
+it alignable and indentable; the preset already does.
+
+```ts
+import { indent, outdent, setTextAlign, textAlign } from "@sbh321/docs-editor-core";
+
+setTextAlign("center")(state, dispatch);
+textAlign(state); // "center", or null when the selection's blocks disagree
+```
+
+`indent` / `outdent` are **one pair of commands, list-aware**. Inside a list they
+nest and unnest the item; elsewhere they change the `indent` attribute. This is
+deliberate: an `indent` attribute on a list item would render as indented while
+leaving the item a structural *sibling*, so the outline, Markdown and DOCX would
+all disagree with what the screen shows.
+
+`clearFormatting` clears marks **and** paragraph formatting in a single
+transaction. `removeFormatting` (marks only) remains for the narrower job — but
+a button labelled "clear formatting" wants the former, or a centred, indented
+paragraph comes back centred and indented.
+
+Font size is a mark storing **points**:
+
+```ts
+import { activeFontSize, adjustFontSize, setFontSize } from "@sbh321/docs-editor-core";
+
+setFontSize(18)(state, dispatch);
+adjustFontSize(+1)(state, dispatch); // what a `− 12 +` stepper runs
+activeFontSize(state); // 12 when nothing applies, so a stepper always has a base
+```
+
+Links have a real API — `activeLink` reads the whole run under the cursor,
+`setLink` retargets it, `insertLink` supplies its own text, `removeLink` strips
+it. `normalizeLinkHref` turns `example.com` into `https://example.com` and a bare
+address into `mailto:`. **`isSafeLinkUrl` is stricter than media's
+`isSafeMediaUrl` on purpose**: `data:` is fine in an `<img src>` and an
+execution vector in an `<a href>`.
+
+Lists gained `toggleList` (convert a list's type *in place*, preserving nesting
+and the cursor), `setListStyle` (disc/circle/square, decimal/alpha/roman), and
+`task_list` / `task_item` nodes with `toggleTaskItem`. Checklists are their own
+node types rather than a flag on `list_item` — they serialize differently in
+every format, and `checked: null` on every ordinary bullet would be noise each
+exporter has to work around.
+
+`moveNode(from, to)` and `moveBlock("up" | "down")` reorder blocks. They are
+position-based and know nothing about dragging, so a pointer gesture, a
+keyboard shortcut and a programmatic reorder all share one edit.
+
 ### baseKeymap — a working editor out of the box
 
 `baseKeymap` is a ready-made `Record<string, Command>` of the essential
@@ -408,6 +461,108 @@ const commands = new CommandRegistry();
 commands.register("deleteSelection", deleteSelection);
 commands.run("deleteSelection", state, dispatch);
 ```
+
+## Media
+
+Images, video, audio, file attachments and generic embeds, on one shared
+foundation rather than five near-identical implementations.
+
+### Schema
+
+`mediaNodeSpecs()` returns ordinary `NodeSpec`s to spread into your schema — no
+new schema concept, and any field can be overridden:
+
+```ts
+const schema = createSchema({
+  topNode: "doc",
+  nodes: {
+    doc: { content: "block+" },
+    paragraph: { group: "block", content: "inline*" },
+    text: { group: "inline", isText: true, marks: "all" },
+    ...mediaNodeSpecs(),
+  },
+});
+```
+
+Every media type joins the shared `media` group, which is how `figure` accepts
+any of them (`"media caption?"`) without enumerating types — and how a media
+node of your own participates in the commands below with nothing to register.
+
+### Commands
+
+`insertMedia`, `setMediaAttrs`, `setMediaAlignment`, `setMediaSize`,
+`adjustMediaWidth`, `setMediaAlt` and `removeMedia`.
+
+They **decline rather than throw** when they do not apply — no node selection, a
+node whose type lacks the attribute, or a non-media node — because a toolbar
+decides whether to enable a button by dry-running the command without
+`dispatch`. A genuinely invalid *value* (`align: "diagonal"`) is a programmer
+error and still throws.
+
+`adjustMediaWidth` is the keyboard equivalent of dragging a corner. Media sized
+naturally has no width in the model, so a view passes the measured one:
+
+```ts
+adjustMediaWidth(16, { currentWidth: element.getBoundingClientRect().width });
+```
+
+### Uploads
+
+**The core never performs a network request.** You supply a `MediaUploader`;
+`MediaUploadRegistry` drives its lifecycle — progress, cancellation, retry — and
+keeps all of that *outside* the document. Only the durable `mediaId` and final
+`src` are document data, so placeholders stay out of undo history and a document
+can never be serialized mid-upload.
+
+```ts
+const registry = new MediaUploadRegistry({ uploader });
+const mediaId = registry.start(file);
+insertMedia("image", { mediaId, alt: file.name })(state, dispatch);
+const unsubscribe = registry.subscribe((uploads) => render(uploads));
+registry.destroy(); // on teardown — releases previews and aborts requests
+```
+
+The `mediaId` is what lets an upload finishing *after* the user has kept typing
+update the right node rather than a position that has since moved. Call
+`release(mediaId)` once the result is in the document: an unreleased preview
+keeps its blob alive for the page's lifetime.
+
+### Ingestion
+
+`planMediaInsert`, `acceptMediaFiles`, `mediaTypeForFile`/`ForMime`/`ForUrl` and
+`isSafeMediaUrl` turn a paste or drop into a decision — which files to accept,
+what node type each becomes, and whether a URL is safe to load.
+
+### Serialization
+
+`mediaNodeRenderers()` and `mediaHtmlParseRules()` drive HTML export, import,
+external paste and print. Sources are sanitized in **both** directions.
+
+`MediaRendererOptions` controls loading: images and embeds default to
+`loading="lazy"`, images to `decoding="async"`, and video/audio to
+`preload="metadata"`.
+
+> **Pass `loading: "eager"` when exporting for print.** A lazy image that never
+> entered the viewport may not be fetched in time, and a missing image in a PDF
+> is a permanent, silent loss.
+
+### Accessibility
+
+`decorative` is a separate attribute rather than an inferred empty `alt`,
+because "this image carries no meaning" and "nobody has written alt text yet"
+are opposite facts that look identical in markup.
+
+`mediaAccessibilityIssues(doc, schema)` reports the problems as data, each with
+a position you can select or decorate:
+
+```ts
+const issues = mediaAccessibilityIssues(state.doc, state.schema);
+// [{ kind: "missing-alt-text", nodeType: "image", pos: 12, message: "…" }]
+```
+
+It takes the schema because a *leaf* node occupies one position and a node with
+content occupies its content plus two — so positions cannot be computed from a
+document tree alone.
 
 ## Serialization
 
@@ -760,6 +915,72 @@ this package never exposes ProseMirror's plugin system) as the view's
 engine state the view currently holds when the key fires (not necessarily
 the state this `EditorView` was constructed or last updated with) and
 dispatched through the same `dispatchTransaction` path as typed input.
+
+## The default preset
+
+Everything above is configurable, which is the point of a headless engine — and
+also why assembling an editor used to take ~250 lines before you had anything on
+screen. `@sbh321/docs-editor-core/preset` is that configuration, shipped:
+
+```ts
+import { EditorState } from "@sbh321/docs-editor-core";
+import {
+  defaultSchema,
+  defaultKeymap,
+  defaultNodeRenderers,
+  defaultMarkRenderers,
+  defaultParseSpec,
+} from "@sbh321/docs-editor-core/preset";
+
+const state = EditorState.create({ schema: defaultSchema, doc, history: true });
+```
+
+A complete schema — prose, headings, lists, quotes, code, dividers, media,
+tables, and the formatting marks including colour and font — plus the renderers,
+HTML parse rules and key bindings that go with it.
+
+**They ship together on purpose.** The renderers drive the live view, HTML
+export *and* print, and the parse rules are their inverse. Maintaining those as
+four separate maps is how exported markup quietly stops matching what is on
+screen — a drift that usually surfaces in a printed document, long after the
+change that caused it.
+
+Its type names match `defaultMarkdownSpec` and `defaultDocxSpec`, so a document
+built on this schema exports to Markdown and DOCX with no mapping configuration.
+
+### Extending it
+
+```ts
+import { extendDefaultSchema, defaultNodeSpecs } from "@sbh321/docs-editor-core/preset";
+
+const schema = extendDefaultSchema({
+  nodes: { callout: { group: "block", content: "block+" } },
+  marks: { superscript: {} },
+});
+```
+
+Entries are merged over the defaults, so this adds without disturbing anything.
+A name that already exists **replaces** that spec rather than merging into it —
+spread the original to change one field:
+
+```ts
+extendDefaultSchema({
+  nodes: { heading: { ...defaultNodeSpecs.heading, attrs: { level: { default: 2 } } } },
+});
+```
+
+### Why a separate entry point
+
+Importing it is what pulls it into your bundle, exactly like `/tables`. A
+consumer with their own schema pays nothing for this one.
+
+It is also **framework-agnostic** — no React anywhere in it — so a server-side
+render, the Markdown and DOCX exporters, and any future adapter can use the same
+schema the editor does.
+
+> **Stability:** these type names are a public API. A document saved against
+> `defaultSchema` today must still load tomorrow, so additions are cheap and
+> renames are breaking changes.
 
 ## Public API and `@internal`
 

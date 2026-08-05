@@ -1,4 +1,4 @@
-import { createSchema } from "@sbh321/docs-editor-core";
+import { createSchema, mediaNodeSpecs, taskListNodeSpecs } from "@sbh321/docs-editor-core";
 import { describe, expect, it } from "vitest";
 
 import { MarkdownImporter } from "./parse";
@@ -17,6 +17,8 @@ const schema = createSchema({
     code_block: { group: "block", content: "text*", marks: "none", code: true },
     divider: { group: "block" },
     text: { group: "inline", isText: true, marks: "all" },
+    ...mediaNodeSpecs(),
+    ...taskListNodeSpecs(),
   },
   marks: {
     bold: {},
@@ -155,6 +157,167 @@ describe("Markdown lossy cases (documented, not hidden)", () => {
   });
 });
 
+describe("Markdown media (ROADMAP 7.6)", () => {
+  it("exports an image natively, with alt and title", () => {
+    const doc = schema.createDocument([
+      schema.node("image", { src: "https://cdn.test/a.png", alt: "A cat", title: "Tabby" }),
+    ]);
+
+    expect(exporter.serialize(doc)).toContain('![A cat](https://cdn.test/a.png "Tabby")');
+  });
+
+  it("keeps an empty alt empty, so a decorative image stays decorative", () => {
+    const doc = schema.createDocument([
+      schema.node("image", { src: "https://cdn.test/line.png", alt: "", decorative: true }),
+    ]);
+
+    // `![](src)` is Markdown's "no alternative text" — substituting a filename
+    // here would announce a decorative image to a screen reader.
+    expect(exporter.serialize(doc)).toContain("![](https://cdn.test/line.png)");
+  });
+
+  it("degrades video, audio, attachments and embeds to links", () => {
+    const doc = schema.createDocument([
+      schema.node("video", { src: "https://cdn.test/clip.mp4", alt: "Launch clip" }),
+      schema.node("audio", { src: "https://cdn.test/tone.mp3", title: "Tone" }),
+      schema.node("file", { src: "https://cdn.test/r.pdf", filename: "report.pdf" }),
+      schema.node("embed", { src: "https://embed.test/x", alt: "Chart" }),
+    ]);
+
+    const markdown = exporter.serialize(doc);
+    expect(markdown).toContain("[Launch clip](https://cdn.test/clip.mp4)");
+    expect(markdown).toContain('[Tone](https://cdn.test/tone.mp3 "Tone")');
+    expect(markdown).toContain("[report.pdf](https://cdn.test/r.pdf)");
+    expect(markdown).toContain("[Chart](https://embed.test/x)");
+  });
+
+  it("falls back to the URL when a media node carries no describing text", () => {
+    const doc = schema.createDocument([schema.node("video", { src: "https://cdn.test/c.mp4" })]);
+
+    // An empty link text would be unusable; the URL is the only honest label,
+    // and inventing an English word like "Video" is not a serializer's job.
+    expect(exporter.serialize(doc)).toContain("[https://cdn.test/c.mp4](https://cdn.test/c.mp4)");
+  });
+
+  it("emits nothing for media that is still uploading, rather than a broken link", () => {
+    const doc = schema.createDocument([
+      schema.node("paragraph", undefined, [schema.text("Before")]),
+      schema.node("image", { src: "", alt: "" }),
+      schema.node("paragraph", undefined, [schema.text("After")]),
+    ]);
+
+    const markdown = exporter.serialize(doc);
+    expect(markdown).not.toContain("![]()");
+    // The surrounding blocks stay correctly separated — no stray blank run.
+    expect(markdown).toBe("Before\n\nAfter\n");
+  });
+
+  it("keeps the alt text when media has no usable source", () => {
+    const doc = schema.createDocument([schema.node("image", { src: "", alt: "Pending photo" })]);
+
+    expect(exporter.serialize(doc).trim()).toBe("Pending photo");
+  });
+
+  it("refuses to emit a link to an unsafe source", () => {
+    const doc = schema.createDocument([
+      schema.node("image", { src: "javascript:alert(1)", alt: "Trap" }),
+    ]);
+
+    const markdown = exporter.serialize(doc);
+    expect(markdown).not.toContain("javascript:");
+    expect(markdown).toContain("Trap");
+  });
+
+  it("flattens a figure into its media plus the caption as a paragraph", () => {
+    const doc = schema.createDocument([
+      schema.node("figure", undefined, [
+        schema.node("image", { src: "https://cdn.test/f.png", alt: "Fig" }),
+        schema.node("caption", undefined, [schema.text("Figure 1 — results")]),
+      ]),
+    ]);
+
+    // Markdown has no figure/caption pairing: the grouping is the documented
+    // loss, both halves survive.
+    expect(exporter.serialize(doc)).toBe("![Fig](https://cdn.test/f.png)\n\nFigure 1 — results\n");
+  });
+
+  it("escapes a URL containing spaces so the link stays parseable", () => {
+    const doc = schema.createDocument([
+      schema.node("image", { src: "https://cdn.test/my photo.png", alt: "P" }),
+    ]);
+
+    expect(exporter.serialize(doc)).toContain("![P](<https://cdn.test/my photo.png>)");
+  });
+
+  it("imports a standalone image as an image node", () => {
+    const doc = importer.parse('![A cat](https://cdn.test/a.png "Tabby")');
+
+    const image = doc.content[0];
+    expect(image?.type).toBe("image");
+    expect(image?.attrs.src).toBe("https://cdn.test/a.png");
+    expect(image?.attrs.alt).toBe("A cat");
+    expect(image?.attrs.title).toBe("Tabby");
+  });
+
+  it("degrades an image mixed with text to an inline link", () => {
+    const doc = importer.parse("See ![A cat](https://cdn.test/a.png) here");
+
+    const paragraph = doc.content[0];
+    expect(paragraph?.type).toBe("paragraph");
+    const link = paragraph?.content.find((n) => n.text === "A cat");
+    expect(link?.marks[0]?.type).toBe("link");
+    expect(link?.marks[0]?.attrs.href).toBe("https://cdn.test/a.png");
+  });
+
+  it("does not import an unsafe image source as a node", () => {
+    const doc = importer.parse("![Trap](javascript:alert(1))");
+
+    // `markdown-it` refuses the destination while tokenizing, so this never
+    // becomes an image token at all — the whole construct stays literal text.
+    // The URL therefore survives only as text a browser cannot act on: no image
+    // node, no `src` attribute, no link mark.
+    const block = doc.content[0];
+    expect(block?.type).toBe("paragraph");
+    expect(block?.content[0]?.text).toBe("![Trap](javascript:alert(1))");
+    expect(block?.content[0]?.marks).toEqual([]);
+    expect(block?.attrs.src).toBeUndefined();
+  });
+
+  it("does not import an unsafe image source even if tokenizing let one through", () => {
+    // Defence in depth: the importer's own check, exercised directly rather
+    // than through `markdown-it`, so this package's guarantee does not silently
+    // become a borrowed one if that dependency's link validation ever changes.
+    const permissive = new MarkdownImporter(schema);
+    const token = {
+      type: "inline",
+      tag: "",
+      content: "",
+      children: [
+        {
+          type: "image",
+          tag: "img",
+          content: "Trap",
+          children: null,
+          attrGet: (name: string) => (name === "src" ? "javascript:alert(1)" : null),
+        },
+      ],
+      attrGet: () => null,
+    };
+    const attrs = (
+      permissive as unknown as {
+        standaloneImageAttrs(t: unknown): Record<string, unknown> | null;
+      }
+    ).standaloneImageAttrs(token);
+
+    expect(attrs).toBeNull();
+  });
+
+  it("round-trips a standalone image", () => {
+    const markdown = "![A cat](https://cdn.test/a.png)\n";
+    expect(exporter.serialize(importer.parse(markdown))).toBe(markdown);
+  });
+});
+
 describe("Markdown round-trip", () => {
   it("preserves structure within Markdown's expressiveness", () => {
     const markdown = "# Report\n\nSome **bold** and *italic* text.\n\n- a\n- b\n";
@@ -166,5 +329,48 @@ describe("Markdown round-trip", () => {
     expect(back).toContain("*italic*");
     expect(back).toContain("- a");
     expect(back).toContain("- b");
+  });
+});
+
+/**
+ * Task lists (ROADMAP Phase 9, Milestone 9.3).
+ *
+ * GitHub Flavored Markdown rather than CommonMark, and markdown-it does not
+ * tokenize it — so what is really being tested is the structural rewrite that
+ * recognises it after the fact.
+ */
+describe("task lists", () => {
+  const importer = new MarkdownImporter(schema);
+  const exporter = new MarkdownExporter();
+
+  it("imports a checklist", () => {
+    const doc = importer.parse("- [x] Done\n- [ ] Todo");
+    const list = doc.content[0];
+
+    expect(list?.type).toBe("task_list");
+    expect(list?.content[0]?.attrs.checked).toBe(true);
+    expect(list?.content[1]?.attrs.checked).toBe(false);
+    // The marker text is consumed, not left in the content.
+    expect(list?.content[0]?.content[0]?.content[0]?.text).toBe("Done");
+  });
+
+  it("round-trips", () => {
+    // Trailing newline: the exporter terminates every block, checklists
+    // included.
+    const markdown = "- [x] Done\n- [ ] Todo";
+    expect(exporter.serialize(importer.parse(markdown))).toBe(`${markdown}\n`);
+  });
+
+  it("leaves a mixed list alone rather than promoting plain items", () => {
+    // This model cannot express "an unchecked non-task item", so converting
+    // would change what the plain item means. Keeping the literal text is
+    // visible and lossless.
+    const doc = importer.parse("- [x] Done\n- Plain");
+    expect(doc.content[0]?.type).toBe("bullet_list");
+    expect(doc.content[0]?.content[0]?.content[0]?.content[0]?.text).toBe("[x] Done");
+  });
+
+  it("leaves an ordinary bullet list alone", () => {
+    expect(importer.parse("- One\n- Two").content[0]?.type).toBe("bullet_list");
   });
 });

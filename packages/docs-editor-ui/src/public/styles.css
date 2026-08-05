@@ -1,0 +1,17 @@
+/**
+ * Docs Editor — the stylesheet.
+ * ROADMAP Phase 8.
+ *
+ *   import "@sbh321/docs-editor/styles.css";
+ *
+ * Split into files by concern and re-exported here, so consumers import one
+ * path and never have to know how it is organised. `@import` must precede all
+ * other rules in a CSS file, which is why this file contains nothing else.
+ *
+ * Order matters: tokens first, since everything below resolves against them.
+ */
+
+@import "./tokens.css";
+@import "./components.css";
+@import "./shell.css";
+@import "./document.css";

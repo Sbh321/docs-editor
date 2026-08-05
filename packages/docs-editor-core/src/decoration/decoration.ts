@@ -41,7 +41,7 @@ export interface Decoration {
    * - `"inline"` (default) wraps the covered text range in an element carrying
    *   the attributes (search highlights, comment ranges).
    * - `"node"` applies the attributes to the single block node spanning
-   *   `from`..`to` (its outer element) — e.g. a `style: "margin-top: …"` to push
+   *   `from`..`to` (its outer element) — e.g. a `style: "padding-top: …"` to push
    *   a block down, the mechanism behind page-break spacing. `from`/`to` must be
    *   the node's own position range (`pos` … `pos + nodeSize`).
    */

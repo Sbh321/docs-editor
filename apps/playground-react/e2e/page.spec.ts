@@ -1,96 +1,140 @@
 import { expect, test } from "@playwright/test";
 
-// Page layout: the editor renders inside a sized "page" surface with page-setup
-// controls (size / orientation / margins / page numbers) and header/footer.
+import { loadMarkdownDocument } from "./load-document";
+import { toolbarControl } from "./toolbar";
 
-test("renders the editor inside a page surface", async ({ page }) => {
+import type { Page } from "@playwright/test";
+
+/**
+ * Page layout and pagination (ROADMAP Phase 8, Milestone 8.6).
+ *
+ * Pagination is measurement-driven: content flows onto a new sheet when it
+ * exceeds the printable height of the current one. Nothing about that is
+ * observable without real layout.
+ */
+
+const EDITOR = ".de-editor";
+
+// Wide enough for the whole toolbar and the status bar's zoom controls.
+test.use({ viewport: { width: 1800, height: 900 } });
+
+/** Opens the layout panel, which holds the page-setup controls. */
+async function openLayout(page: Page) {
+  await (await toolbarControl(page, "Layout")).click();
+  await expect(page.getByRole("complementary", { name: "Layout" })).toBeVisible();
+}
+
+test("renders the document on a page sheet inside a canvas", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".pg-page").first()).toBeVisible();
-  await expect(page.locator(".playground-editor")).toContainText("Hello, Docs Editor.");
+
+  const sheet = page.locator(".de-page, [data-page]").first();
+  await expect(sheet).toBeVisible();
+
+  const box = await sheet.boundingBox();
+  // A4 at 96dpi is 794px wide; the page must look like paper rather than
+  // filling the window.
+  expect(box?.width).toBeGreaterThan(600);
+  expect(box?.width).toBeLessThan(900);
 });
 
-test("changing the page size resizes the sheet", async ({ page }) => {
+test("changing the page size changes the sheet's width", async ({ page }) => {
   await page.goto("/");
-  const sheet = page.locator(".pg-page");
+  const sheet = page.locator(".de-page, [data-page]").first();
+  const before = (await sheet.boundingBox())?.width ?? 0;
 
-  const a4Width = (await sheet.boundingBox())?.width ?? 0;
-  expect(a4Width).toBeGreaterThan(0);
-
-  await page.getByLabel("Page size").selectOption("A5");
-  // A5 is narrower than A4; the sheet must shrink.
-  await expect(async () => {
-    const a5Width = (await sheet.boundingBox())?.width ?? 0;
-    expect(a5Width).toBeLessThan(a4Width);
-  }).toPass();
+  await openLayout(page);
+  await page.getByLabel("Page size").selectOption("Letter");
+  await expect.poll(async () => (await sheet.boundingBox())?.width ?? 0).not.toBe(before);
 });
 
-test("landscape orientation makes the sheet wider than tall relative to portrait", async ({
-  page,
-}) => {
+test("landscape orientation swaps the sheet's proportions", async ({ page }) => {
   await page.goto("/");
-  const sheet = page.locator(".pg-page");
+  const sheet = page.locator(".de-page, [data-page]").first();
   const portrait = await sheet.boundingBox();
 
+  await openLayout(page);
   await page.getByLabel("Page orientation").selectOption("landscape");
-  await expect(async () => {
-    const landscape = await sheet.boundingBox();
-    expect((landscape?.width ?? 0) > (portrait?.width ?? 0)).toBe(true);
-  }).toPass();
+  await expect
+    .poll(async () => (await sheet.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(portrait?.width ?? 0);
 });
 
-test("live pagination splits long content across multiple sheets and reflows", async ({ page }) => {
+test("content flows onto additional sheets as it grows", async ({ page }) => {
   await page.goto("/");
+  const editable = page.locator(EDITOR).locator("[contenteditable='true']");
+  await editable.click();
 
-  // Import a long document (many paragraphs) so it exceeds one page.
-  const longDoc = Array.from(
-    { length: 90 },
-    (_, i) => `Paragraph number ${i + 1} with enough text to occupy a full line on the page.`,
-  ).join("\n\n");
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill(longDoc);
-  await page.getByRole("button", { name: "Import", exact: true }).click();
+  const sheets = page.locator(".de-page, [data-page]");
+  const before = await sheets.count();
 
-  // Multiple page sheets are drawn.
-  await expect(async () => {
-    expect(await page.locator(".pg-page").count()).toBeGreaterThan(1);
-  }).toPass({ timeout: 5000 });
+  // Enough content to exceed one printable page.
+  await page.evaluate(() => {
+    const element = document.querySelector(".de-editor [contenteditable='true']");
+    if (element) {
+      element.dispatchEvent(new Event("focus"));
+    }
+  });
+  for (let index = 0; index < 60; index += 1) {
+    await page.keyboard.type(`Paragraph ${String(index)} with enough text to take a full line. `);
+    await page.keyboard.press("Enter");
+  }
 
-  // At least one block carries page-break spacing (a node-decoration margin).
-  await expect(async () => {
-    const withMargin = await page
-      .locator(".playground-editor [contenteditable='true'] > [style*='margin-top']")
-      .count();
-    expect(withMargin).toBeGreaterThan(0);
-  }).toPass({ timeout: 5000 });
+  await expect.poll(async () => sheets.count(), { timeout: 15_000 }).toBeGreaterThan(before);
 });
 
-test("toggling live pagination off returns to a single sheet", async ({ page }) => {
+test("zoom scales the page", async ({ page }) => {
   await page.goto("/");
+  const sheet = page.locator(".de-page, [data-page]").first();
+  const before = (await sheet.boundingBox())?.width ?? 0;
 
-  const longDoc = Array.from(
-    { length: 90 },
-    (_, i) => `Paragraph number ${i + 1} with enough text to occupy a full line on the page.`,
-  ).join("\n\n");
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill(longDoc);
-  await page.getByRole("button", { name: "Import", exact: true }).click();
-
-  await expect(async () => {
-    expect(await page.locator(".pg-page").count()).toBeGreaterThan(1);
-  }).toPass({ timeout: 5000 });
-
-  await page.getByLabel("Live pagination").uncheck();
-  await expect(page.locator(".pg-page")).toHaveCount(1);
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect.poll(async () => (await sheet.boundingBox())?.width ?? 0).toBeGreaterThan(before);
 });
 
-test("header, footer, and page numbers appear on the page", async ({ page }) => {
+test("typing at a page boundary does not make the layout snap back and forth", async ({ page }) => {
   await page.goto("/");
+  // Fill just past one page, so the boundary sits amid live content.
+  await loadMarkdownDocument(
+    page,
+    Array.from(
+      { length: 45 },
+      (_, index) => `Paragraph ${index + 1} of the boundary test with enough words to wrap once.`,
+    ).join("\n\n"),
+  );
+  await expect
+    .poll(async () => page.locator(".de-page").count(), { timeout: 15_000 })
+    .toBeGreaterThan(1);
+  await page.waitForTimeout(500);
 
-  await page.getByLabel("Page header").fill("Quarterly Report");
-  await expect(page.locator(".pg-page-header")).toHaveText("Quarterly Report");
+  // Type at the very end — right where content crosses onto the next sheet.
+  const editable = page.locator("[contenteditable='true']");
+  await editable.locator("> *").last().click();
+  await page.keyboard.press("Control+End");
 
-  await page.getByLabel("Page footer").fill("Confidential");
-  await page.getByLabel("Show page numbers").check();
-  await expect(page.locator(".pg-page-footer")).toContainText("Confidential");
-  await expect(page.locator(".pg-page-footer")).toContainText("Page 1");
+  // Sample the layout while typing. The regression (Phase 9.14) showed up as
+  // the page-break spacing flickering off and on with every keystroke and the
+  // break flip-flopping between blocks, so the samples oscillated: the total
+  // height went down, up, down. A settled layout only ever grows here.
+  const samples: number[] = [];
+  for (let burst = 0; burst < 8; burst += 1) {
+    await page.keyboard.type("more words being typed at the boundary ", { delay: 5 });
+    await page.waitForTimeout(220); // past the repagination idle window
+    samples.push(await editable.evaluate((node) => node.scrollHeight));
+  }
+
+  let reversals = 0;
+  for (let index = 2; index < samples.length; index += 1) {
+    const previous = Math.sign(samples[index - 1]! - samples[index - 2]!);
+    const current = Math.sign(samples[index]! - samples[index - 1]!);
+    if (previous !== 0 && current !== 0 && current !== previous) {
+      reversals += 1;
+    }
+  }
+  // Adding text must only ever grow the laid-out height once each pass has
+  // settled. One reversal is tolerated for a break legitimately re-seating;
+  // the pre-fix behaviour produced several.
+  expect(reversals).toBeLessThanOrEqual(1);
+
+  // And the count itself must not have collapsed back.
+  expect(await page.locator(".de-page").count()).toBeGreaterThan(1);
 });

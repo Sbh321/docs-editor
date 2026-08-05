@@ -37,6 +37,9 @@ Lower layers must never depend on higher layers.
 Applications
     ↓
 
+Batteries-Included Layer   (docs-editor — optional)
+    ↓
+
 Framework Adapters
     ↓
 
@@ -48,6 +51,10 @@ Editor Engine
 
 Browser
 ```
+
+Each layer is optional from above: an application may enter at any level. What
+it may never do is skip *downward* — a lower layer never depends on a higher
+one.
 
 ---
 
@@ -85,6 +92,12 @@ Context menu
 
 Nothing should require a specific design system.
 
+Since Phase 8 this is a statement about **layers** rather than about the absence
+of a default. A styled layer ships on top so the common case is one import, but
+it is a separate package a consumer chooses, and the layer beneath it renders no
+styles and ships no CSS. The claim is verified by bundle-size budgets rather
+than by intent: nobody pays for a layer they do not import.
+
 ---
 
 # High Level Architecture
@@ -103,6 +116,12 @@ Nothing should require a specific design system.
  Angular
 
  Svelte
+
+------------------------------
+
+Batteries-Included Layer
+
+docs-editor (styled UI, <DocsEditor />)
 
 ------------------------------
 
@@ -218,6 +237,59 @@ and the separate `@sbh321/docs-editor-icons` package.
 
 ---
 
+## docs-editor
+
+Responsible for:
+
+The batteries-included layer — styled components and the assembled
+`<DocsEditor />` (Phase 8).
+
+### Why it is a separate package
+
+The other packages are headless by design, which is what makes them composable
+and what made assembling an editor a ~1,800-line job. Putting the styled layer
+*inside* `docs-editor-react` would have fixed that and broken three things:
+
+1. A consumer wanting the primitives with their own design system would be
+   forced to download an opinionated schema, a full styled UI and an icon set.
+2. The default schema, renderers and parse rules are framework-agnostic **data**
+   — inside a React package they become unusable from the Markdown and DOCX
+   exporters, from a server render, and from any future adapter. They live in
+   `docs-editor-core/preset` for that reason.
+3. "Headless" stops being true, and it is the project's stated identity.
+
+Batteries-included and headless only conflict when they are the same package.
+
+### The boundary
+
+**Opinions live here; behaviour does not.** Every control delegates to a core
+command, exactly as the headless UI layer does — this layer decides what a
+control looks like and where it sits, never what bold *means*. A feature needing
+new editing behaviour puts that behaviour in the core and only its presentation
+here.
+
+Application concerns stay in the application, unchanged: upload transport,
+storage, authentication, persistence, routing. `<DocsEditor />` accepts an
+`onInsertImage` callback and an `onChange`; it does not acquire them.
+
+### Enforcement
+
+The layering is verified by **bundle-size budgets in CI**, not by intent. A pair
+of matched scenarios measures the same editing setup with and without each
+optional layer, so "nobody pays for what they do not import" is a number that
+fails a build rather than a claim in a document (see docs/PERFORMANCE.md).
+
+### Styling
+
+Plain CSS with custom properties, not Tailwind and not a copy-paste CLI. A
+framework preset would make every consumer configure a build step before they
+had an editor, and this project must not depend on a CSS framework. Colours are
+declared as foreground/background *pairs* named for their role, so a dark scheme
+is a different set of values rather than a different set of rules — which is
+what keeps light and dark from drifting apart as components are added.
+
+---
+
 ## Future Framework Packages
 
 Vue
@@ -239,6 +311,9 @@ Dependencies must always flow toward the core.
 Applications
       ↓
 
+Batteries-Included Layer
+      ↓
+
 Framework Adapters
       ↓
 
@@ -248,6 +323,8 @@ Core
 Editor Engine
 
 Core must never depend on framework adapters.
+
+Framework adapters must never depend on the batteries-included layer.
 
 Plugins may depend on the public API but should not depend on application code.
 
@@ -275,6 +352,14 @@ List
 Table
 
 Image
+
+Video
+
+Audio
+
+File Attachment
+
+Embed
 
 Code Block
 
@@ -466,6 +551,7 @@ Transient UI state:
 - Search panel
 - Zoom
 - Page layout (size, orientation, margins, header/footer, page numbers)
+- In-flight media uploads (progress, failure, retry, local previews)
 
 Application state:
 
@@ -701,6 +787,80 @@ package.
 
 ---
 
+# Media Architecture
+
+Media — images, video, audio, file attachments and generic embeds — is core, not
+a plugin, and is built on one shared foundation rather than five near-identical
+implementations.
+
+The boundary is what matters, because media is where an editor is most tempted
+to grow application responsibilities:
+
+- **The core owns** the media node model, media commands, the upload *lifecycle*
+  (progress, cancellation, retry), ingestion primitives for paste and drop, and
+  serialization for every format.
+- **The application owns** moving bytes: upload transport, storage, CDN,
+  authentication, scanning, optimization, media libraries.
+- **Framework adapters own** interaction: node views, drag-to-resize, progress
+  affordances, alt-text and caption editing.
+
+**The core never performs a network request and never touches storage.** An
+application supplies a `MediaUploader`; the core drives it and writes the result
+into the document. The same rule applies on the way out: DOCX embedding asks the
+application to resolve an asset's bytes rather than fetching them itself.
+
+In-flight upload state (progress, failure, local object-URL previews) lives in a
+registry keyed by a stable media id, **not in the document**. Only the durable
+media id and final source are document data. This keeps placeholders out of undo
+history, makes it impossible to serialize a document mid-upload, and matches how
+zoom and page layout are treated. The stable id is also what lets an upload
+completing after the user has kept typing update the right node, rather than a
+position that has since moved.
+
+Resolving a third-party URL into a rich embed (oEmbed providers) stays outside
+the core — it needs network access and provider-specific knowledge. The generic
+`embed` node is the extension point.
+
+## Media accessibility
+
+Accessibility is a **gate** on media, not a finishing touch, so the parts that
+can be enforced live in the model rather than in one framework's UI.
+
+`decorative` is recorded as its own attribute rather than inferred from an empty
+`alt`. In markup the two are identical, but "the author decided this image
+carries no meaning" and "the author has not written alt text yet" are opposite
+facts, and only the model can tell them apart. `mediaAccessibilityIssues()`
+reports the difference as data — missing alt text, an untitled embed, or media
+marked decorative *and* given alt text — each with a document position, so an
+application can block a publish, decorate the offending node, or fail a test.
+
+Media is also the first node type a user manipulates by direct gesture, which
+makes it the first place a pointer-only interaction can become an accessibility
+regression. So every gesture has a command behind it: `adjustMediaWidth` is what
+a node view binds to the arrow keys, and it exists in the core precisely so
+resizing is not reachable by dragging alone. A node view supplies the measured
+width the model lacks for naturally-sized media; the arithmetic stays testable
+and framework-independent.
+
+## Commands must decline, not throw
+
+A toolbar decides whether to enable a button by **dry-running** its command —
+calling it without `dispatch`. A command that throws instead of reporting
+`false` therefore takes down the application merely because the user selected
+something it does not apply to.
+
+So a media command reports `false` when the selection is not a node selection,
+when the selected node's type does not declare the attributes being set, and
+when the node is not media at all. Media-ness is judged by the shared `media`
+*group*, so a consumer's own media node participates with nothing to register.
+
+This is distinct from a genuinely invalid value — `align: "diagonal"` on a real
+image is a programmer error and still throws loudly, per the Error Handling
+rules below. The distinction is "this does not apply here" versus "this is
+wrong".
+
+---
+
 # Plugin System
 
 Everything should be pluggable.
@@ -711,7 +871,7 @@ Math
 
 Mermaid
 
-Video
+Embed providers (oEmbed resolution)
 
 Timeline
 

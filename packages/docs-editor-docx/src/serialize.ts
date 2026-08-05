@@ -5,6 +5,7 @@ import {
   ExternalHyperlink,
   HeadingLevel,
   LevelFormat,
+  ImageRun,
   Packer,
   Paragraph,
   ShadingType,
@@ -16,7 +17,7 @@ import {
 
 import { resolveDocxSpec } from "./spec";
 
-import type { DocxSpec } from "./spec";
+import type { DocxAsset, DocxAssetResolver, DocxSpec } from "./spec";
 import type { DocumentExporter, DocumentNode, Mark } from "@sbh321/docs-editor-core";
 
 /** The `docx` numbering definition ordered lists reference. */
@@ -50,9 +51,15 @@ interface BlockContext {
  *
  * Faithful within what DOCX and this mapping express (headings, paragraphs,
  * blockquotes, bullet/ordered lists, code blocks, dividers, tables, and the
- * bold/italic/underline/strikethrough/code/link marks). Documented lossy cases:
- * images render as their alt text (inline image embedding is a future
- * enhancement), and unknown block nodes degrade to their inline text.
+ * bold/italic/underline/strikethrough/code/link marks), plus text and highlight
+ * colour.
+ *
+ * Images embed for real when a {@link DocxAssetResolver} is supplied — the
+ * exporter asks the application for bytes and never fetches them itself, the
+ * same boundary as media upload. Without a resolver, or when one declines, an
+ * image degrades to its alt text rather than failing the export. Remaining
+ * documented lossy cases: video, audio, attachments and embeds degrade to their
+ * inline text, as do unknown block nodes.
  */
 export class DocxExporter<NodeName extends string = string> implements DocumentExporter<
   NodeName,
@@ -60,12 +67,21 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
 > {
   readonly format = "docx";
   private readonly spec: DocxSpec;
+  private readonly resolveAsset: DocxAssetResolver | undefined;
+  /** Bytes resolved for this serialization pass, keyed by source. */
+  private assets: ReadonlyMap<string, DocxAsset> = new Map();
 
-  constructor(spec?: Parameters<typeof resolveDocxSpec>[0]) {
-    this.spec = resolveDocxSpec(spec);
+  constructor(options: DocxExporterOptions = {}) {
+    this.spec = resolveDocxSpec(options.spec);
+    this.resolveAsset = options.resolveAsset;
   }
 
   async serialize(doc: DocumentNode<NodeName>): Promise<Uint8Array> {
+    // Resolve every image up front: building the document is synchronous, and
+    // threading a promise through the whole tree walk would complicate every
+    // node type for the sake of one.
+    this.assets = await this.collectAssets(doc);
+
     const children = this.serializeBlocks(doc.content, {});
     const file = new Document({
       numbering: {
@@ -94,7 +110,15 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
 
   private serializeBlock(node: DocumentNode, ctx: BlockContext): BlockChild[] {
     const { nodes } = this.spec;
-    const indentOpt = ctx.indent ? { indent: { left: ctx.indent } } : {};
+    // The block's own indent attribute adds to whatever nesting already applies
+    // (blockquotes, list continuations), so an indented paragraph inside a quote
+    // lands where the screen shows it.
+    const ownIndent = this.indentOf(node) * INDENT_STEP;
+    const totalIndent = (ctx.indent ?? 0) + ownIndent;
+    const indentOpt = {
+      ...(totalIndent ? { indent: { left: totalIndent } } : {}),
+      ...this.alignmentOf(node),
+    };
 
     switch (node.type) {
       case nodes.heading:
@@ -118,6 +142,8 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
       case nodes.horizontalRule:
         return [new Paragraph({ thematicBreak: true })];
       case nodes.bulletList:
+        return this.serializeList(node, ctx, "bullet");
+      case nodes.taskList:
         return this.serializeList(node, ctx, "bullet");
       case nodes.orderedList:
         return this.serializeList(node, ctx, "ordered");
@@ -147,10 +173,21 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
     const { nodes } = this.spec;
     const out: BlockChild[] = [];
     let markerApplied = false;
+    // A checklist degrades to a bullet list whose text begins with a ballot box.
+    // DOCX *can* carry a real content-control checkbox, but only Word renders
+    // one; every other reader shows an empty gap where the state should be.
+    // A glyph is legible everywhere and survives a copy into plain text.
+    const checkbox = item.type === nodes.taskItem ? this.checkboxGlyph(item) : null;
 
     for (const child of item.content) {
       if (!markerApplied && (child.type === nodes.paragraph || child.type === nodes.heading)) {
-        out.push(new Paragraph({ children: this.inline(child), ...listMarker(listCtx) }));
+        const children = this.inline(child);
+        out.push(
+          new Paragraph({
+            children: checkbox === null ? children : [new TextRun({ text: checkbox }), ...children],
+            ...listMarker(listCtx),
+          }),
+        );
         markerApplied = true;
       } else {
         // Continuation blocks (and nested lists) sit under the marker, indented
@@ -196,10 +233,73 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
   private imageParagraph(node: DocumentNode, indentOpt: Record<string, unknown>): Paragraph {
     const altAttr = node.attrs[this.spec.altAttr];
     const alt = (typeof altAttr === "string" ? altAttr : "").trim();
+    const src =
+      typeof node.attrs[this.spec.srcAttr] === "string"
+        ? (node.attrs[this.spec.srcAttr] as string)
+        : "";
+    const asset = this.assets.get(src);
+
+    if (asset) {
+      const { width, height } = imageSize(node, asset);
+      return new Paragraph({
+        children: [
+          new ImageRun({
+            type: asset.type ?? imageTypeFromSrc(src),
+            data: asset.data,
+            transformation: { width, height },
+            ...(alt ? { altText: { name: alt, description: alt, title: alt } } : {}),
+          }),
+        ],
+        ...indentOpt,
+      });
+    }
+
+    // No resolver, or the resolver declined: degrade to alt text rather than
+    // failing the export or emitting an empty frame.
     return new Paragraph({
       children: [new TextRun({ text: alt.length > 0 ? alt : "[image]", italics: true })],
       ...indentOpt,
     });
+  }
+
+  /** Resolves every distinct image source in the document, in parallel. */
+  private async collectAssets(
+    doc: DocumentNode<NodeName>,
+  ): Promise<ReadonlyMap<string, DocxAsset>> {
+    const resolve = this.resolveAsset;
+    if (!resolve) {
+      return new Map();
+    }
+
+    const sources = new Set<string>();
+    const walk = (nodes: readonly DocumentNode[]): void => {
+      for (const node of nodes) {
+        if (node.type === this.spec.nodes.image) {
+          const src = node.attrs[this.spec.srcAttr];
+          if (typeof src === "string" && src.length > 0) {
+            sources.add(src);
+          }
+        }
+        walk(node.content);
+      }
+    };
+    walk(doc.content);
+
+    const resolved = new Map<string, DocxAsset>();
+    await Promise.all(
+      [...sources].map(async (src) => {
+        try {
+          const asset = await resolve(src);
+          if (asset) {
+            resolved.set(src, asset);
+          }
+        } catch {
+          // One unreachable image must not fail the whole export; it falls back
+          // to alt text like any other unresolved source.
+        }
+      }),
+    );
+    return resolved;
   }
 
   private inline(node: DocumentNode): InlineChild[] {
@@ -221,6 +321,12 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
 
     const textColor = colorOf(marks.textColor);
     const highlightColor = colorOf(marks.highlight);
+    const sizeMark = node.marks.find((mark) => mark.type === marks.fontSize);
+    const rawSize = sizeMark?.attrs[this.spec.sizeAttr];
+    const fontSize =
+      typeof rawSize === "number" && Number.isFinite(rawSize) && rawSize > 0
+        ? Math.round(rawSize)
+        : undefined;
 
     const run = new TextRun({
       text: node.text,
@@ -229,6 +335,9 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
       ...(has(marks.underline) ? { underline: {} } : {}),
       ...(has(marks.strikethrough) ? { strike: true } : {}),
       ...(has(marks.code) ? { font: CODE_FONT } : {}),
+      // DOCX stores sizes in half-points, which is exactly why the model stores
+      // points: the conversion is a doubling rather than a rounded guess.
+      ...(fontSize === undefined ? {} : { size: fontSize * 2 }),
       ...(textColor ? { color: textColor } : {}),
       ...(highlightColor
         ? { shading: { type: ShadingType.CLEAR, color: "auto", fill: highlightColor } }
@@ -240,6 +349,41 @@ export class DocxExporter<NodeName extends string = string> implements DocumentE
       return [new ExternalHyperlink({ children: [run], link: this.hrefOf(link) })];
     }
     return [run];
+  }
+
+  /**
+   * The DOCX alignment for a block, if it declares one.
+   *
+   * `justify` maps to `BOTH`, which is what Word calls justified text.
+   */
+  private alignmentOf(node: DocumentNode): {
+    alignment?: (typeof AlignmentType)[keyof typeof AlignmentType];
+  } {
+    const align = node.attrs[this.spec.alignAttr];
+    switch (align) {
+      case "center":
+        return { alignment: AlignmentType.CENTER };
+      case "right":
+        return { alignment: AlignmentType.RIGHT };
+      case "justify":
+        return { alignment: AlignmentType.BOTH };
+      case "left":
+        return { alignment: AlignmentType.LEFT };
+      default:
+        return {};
+    }
+  }
+
+  /** `\u2612 ` or `\u2610 ` — a ballot box, rendered by every DOCX reader. */
+  private checkboxGlyph(item: DocumentNode): string {
+    return item.attrs[this.spec.checkedAttr] === true ? "\u2612 " : "\u2610 ";
+  }
+
+  private indentOf(node: DocumentNode): number {
+    const indent = node.attrs[this.spec.indentAttr];
+    return typeof indent === "number" && Number.isFinite(indent) && indent > 0
+      ? Math.round(indent)
+      : 0;
   }
 
   private levelOf(node: DocumentNode): number {
@@ -271,6 +415,51 @@ function headingLevel(level: number): (typeof HeadingLevel)[keyof typeof Heading
     HeadingLevel.HEADING_6,
   ];
   return map[clamped - 1] as (typeof HeadingLevel)[keyof typeof HeadingLevel];
+}
+
+export interface DocxExporterOptions {
+  /** Maps the schema's type names to their DOCX meaning. */
+  readonly spec?: Parameters<typeof resolveDocxSpec>[0];
+  /**
+   * Supplies image bytes so images embed rather than degrading to alt text.
+   * Omit to keep the alt-text fallback.
+   */
+  readonly resolveAsset?: DocxAssetResolver;
+}
+
+/** Default width, in pixels, for an image with no size information at all. */
+const DEFAULT_IMAGE_WIDTH = 400;
+
+/** The image size to embed at, preferring the node's own, then the asset's. */
+function imageSize(
+  node: DocumentNode,
+  asset: DocxAsset,
+): { readonly width: number; readonly height: number } {
+  const nodeWidth = typeof node.attrs.width === "number" ? node.attrs.width : undefined;
+  const nodeHeight = typeof node.attrs.height === "number" ? node.attrs.height : undefined;
+
+  const width = nodeWidth ?? asset.width ?? DEFAULT_IMAGE_WIDTH;
+  // Keep the asset's aspect ratio when only a width is known, rather than
+  // guessing a square.
+  const aspect = asset.width && asset.height ? asset.height / asset.width : 0.75;
+  const height = nodeHeight ?? Math.round(width * aspect);
+  return { width, height };
+}
+
+/** DOCX needs an explicit format; infer it from the source's extension. */
+function imageTypeFromSrc(src: string): "png" | "jpg" | "gif" | "bmp" {
+  const extension = src.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
+  switch (extension) {
+    case "jpg":
+    case "jpeg":
+      return "jpg";
+    case "gif":
+      return "gif";
+    case "bmp":
+      return "bmp";
+    default:
+      return "png";
+  }
 }
 
 /** Normalizes a color attr to the `RRGGBB` hex DOCX expects, or `undefined` if not a hex color. */

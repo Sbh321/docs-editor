@@ -456,15 +456,43 @@ match whatever the result happened to be.
 | Bundle | Budget | Baseline | Current | Status |
 | --- | --- | ---: | ---: | --- |
 | Headless (schema + state + command) | ≤ 45 KB | 73.5 KB | 36.0 KB | ✅ fixed in 6.6 |
-| Minimum React editor | ≤ 80 KB | 74.1 KB | 71.3 KB | ✅ |
-| `createSchema` only | ≤ 30 KB | 24.4 KB | 24.4 KB | ✅ |
-| core: full barrel | ≤ 90 KB | 82.1 KB | 79.4 KB | ✅ |
-| react: full barrel | ≤ 105 KB | — | 95.1 KB | ✅ |
-| `docs-editor-core` package output | ≤ 23 KB | 17.2 KB | 19.3 KB | ✅ |
-| `docs-editor-react` package output | ≤ 15 KB | 11.7 KB | 11.7 KB | ✅ |
-| `docs-editor-markdown` / `-docx` / `-icons` | ≤ 4 / 5 / 3 KB | — | 2.2 / 2.8 / 1.7 KB | ✅ |
-| `docs-editor-markdown` consumer bundle | ≤ 85 KB | 75.0 KB | 75.0 KB | ✅ |
-| `docs-editor-docx` consumer bundle | ≤ 290 KB | 263.1 KB | 263.1 KB | ✅ |
+| Minimum React editor | ≤ 80 KB | 74.1 KB | 71.5 KB | ✅ |
+| `createSchema` only | ≤ 24 KB | 24.4 KB | 19.4 KB | ✅ improved in 8.1 |
+| core: full barrel | ≤ 90 KB | 82.1 KB | 83.8 KB | ✅ |
+| react: full barrel | ≤ 105 KB | — | 98.3 KB | ✅ |
+| `docs-editor-core` package output | ≤ 35 KB | 17.2 KB | 32.1 KB | ✅ (raised twice, see below) |
+| `docs-editor-react` package output | ≤ 17 KB | 11.7 KB | 15.4 KB | ✅ (raised, see below) |
+| `docs-editor-markdown` / `-docx` / `-icons` | ≤ 4 / 5 / 3 KB | — | 3.2 / 3.6 / 1.7 KB | ✅ |
+| `docs-editor` (UI) package output | ≤ 8 KB | — | 4.1 KB | ✅ |
+| `ui: styled primitives` consumer bundle | ≤ 30 KB | — | 25.4 KB | ✅ |
+| `docs-editor-markdown` consumer bundle | ≤ 85 KB | 75.0 KB | 75.7 KB | ✅ |
+| `docs-editor-docx` consumer bundle | ≤ 290 KB | 263.1 KB | 267.1 KB | ✅ |
+| Editor importing **no** media | ≤ 38 KB | — | 36.1 KB | ✅ |
+| The same **plus** the media catalog | ≤ 42 KB | — | 38.3 KB | ✅ |
+| `preset: default schema` | ≤ 44 KB | — | 39.6 KB | ✅ |
+
+`ui: styled primitives` is worth reading twice: importing Button, Dialog,
+DropdownMenu, Input, Popover, Select and Tooltip costs **25.3 KB** — it does not
+pull in the editor, the core, or ProseMirror at all. The styled components are
+usable on their own, and an application that wants only a themed dialog does not
+download a document engine to get one.
+
+The two media rows are a matched pair, added in 7.7 to make media's cost a measured
+number rather than an assurance. The same editing setup, once without media and
+once with the node specs, commands, renderers and upload registry, differ by
+**2.2 KB gzipped** — and an application that imports no media pays nothing at
+all, since the no-media row matches the pre-media `headless state` baseline
+(36.0 KB) once its extra history commands are accounted for. That is the
+finding-2 property (`prosemirror-tables` shipping to everyone) not repeating.
+
+"Current" is as of the end of Phase 7. The growth since the Phase 6 baselines
+is Phase 7's media work: the core's media catalog, commands, upload lifecycle and
+serializers; the React node views; and DOCX image embedding. The consumer-bundle
+rows moved far less than the package-output rows (`core: full barrel` +0.9 KB
+against a package-output +2.7 KB), which is the tree-shaking evidence 6.6 asked
+for — an application that imports no media does not pay for it. The
+`docs-editor-markdown` +0.7 KB is that package now importing `isSafeMediaUrl` to
+refuse unsafe media sources on both export and import.
 
 **Tracked, not gated** (too noisy to fail a build on):
 
@@ -478,6 +506,140 @@ match whatever the result happened to be.
 | Browser typing, 1000 paragraphs | < 8 ms/keystroke | 9.15 ms | ~9.8 ms | ⚠️ layout-bound (see finding 7) |
 | Serialization, any format, 67 pages | < 500 ms | — | 70–187 ms | ✅ |
 | Heap growth over a long session | bounded | — | +0.6 MB / 120 cycles | ✅ |
+| Keystroke `apply`, 200 media | < 1 ms | — | 0.0037 ms | ✅ |
+| Keystroke `apply`, 800 media | < 1 ms | — | 0.0089 ms | ✅ |
+| `state.doc` read, any media scale | < 0.01 ms | — | 0.00005 ms | ✅ |
+| HTML export, 200 media | < 500 ms | — | 10.5 ms | ✅ |
+| HTML export, 800 media | < 500 ms | — | 51.3 ms | ✅ |
+
+### Media at scale — Milestone 7.7
+
+Measured with `pnpm --filter @sbh321/docs-editor-core bench media` against
+`src/benchmarks/media-fixtures.ts`, whose `hundreds` scale is PROJECT_SPEC's
+"hundreds of images" stated literally (200 captioned figures among 400
+paragraphs) and whose `extreme` scale is 800.
+
+The Phase 6 budgets hold with media. Typing cost stays essentially flat: 0.0021
+ms at 10 media, 0.0037 ms at 200, 0.0089 ms at 800 — a 4.3× spread across an
+80× document, against a 1 ms budget, and in line with what the text fixtures
+already show for a document of that block count. It is *media-agnostic* growth,
+not a media cost. Reading `state.doc` is genuinely flat (~22M ops/s at every
+scale), confirming the 6.2 memoization holds when the document is mostly media.
+
+HTML export scales linearly with media count (10.5 ms at 200, 51.3 ms at 800),
+which is the expected shape for a whole-document walk and far inside the
+serialization budget.
+
+**Loading is the part that does not show up in these numbers.** A benchmark
+builds no images, so the real cost of a 200-image document is browser fetch and
+decode. That is addressed in the renderers rather than the model: images and
+embeds render `loading="lazy"`, images `decoding="async"`, and video/audio
+`preload="metadata"` — all overridable through `MediaRendererOptions`, because
+**print must pass `loading: "eager"`**. A lazy image that never entered the
+viewport may not be fetched before printing, and a missing image in a PDF is a
+permanent, silent loss rather than a slow scroll.
+
+### Does the batteries-included layer leak? — Milestone 8.7
+
+Phase 8 added a styled UI, a design-token stylesheet, a default schema and an
+assembled `<DocsEditor />`. The whole architecture rests on one claim: **nobody
+pays for a layer they do not import.** That is a measurement, not an intention,
+so here it is.
+
+| Scenario | Before Phase 8 | End of Phase 8 | Change |
+| --- | ---: | ---: | ---: |
+| `createSchema` only | 24.5 KB | 19.4 KB | **−5.1** |
+| headless state | 36.0 KB | 36.0 KB | 0 |
+| editor, no media | 36.1 KB | 36.1 KB | 0 |
+| core: full barrel | 83.0 KB | 83.8 KB | +0.8 |
+| react: editor only | 71.5 KB | 71.6 KB | +0.1 |
+| react: full barrel | 97.4 KB | 98.3 KB | +0.9 |
+
+None of the styled UI, the stylesheet, the default schema or the icons appears
+in any of these. The two rows that moved at all did so for reasons unrelated to
+the batteries:
+
+- **react: full barrel +0.9 KB** is `useColorScheme` and `useMediaUploads` —
+  features added to the *headless* adapter, which a full-barrel import by
+  definition includes.
+- **`createSchema` only −5.1 KB** is a side effect of adding the `/preset`
+  entry point: tsup re-partitioned its shared chunks and the main entry stopped
+  carrying code only other entries need.
+
+The layer's own cost, for a consumer who *does* import it, is the
+`ui: styled primitives` row: **25.4 KB**, which notably does not include the
+editor at all — the styled components tree-shake free of it.
+
+### Budget change log
+
+- **`docs-editor-ui` package output: 18 → 21 KB gzip** (Phase 9, Milestone
+  9.11 — the File menu). Import, export in four formats and print moved from
+  the playground into `<DocsEditor />`, which is ~2 KB of menu, download and
+  format-dispatch wiring in the package output. The numbers that prove the
+  cost lands only where it should: `ui: styled primitives` is byte-identical
+  at 27.3 KB (a primitives consumer never pays for the editor), and Markdown
+  and DOCX stay out of *every* initial bundle — both load dynamically on the
+  click that first needs them, the same rule this document already records for
+  DOCX.
+
+- **Four package budgets raised** (Phase 9 — Rich Formatting & Interaction):
+  `docs-editor-core` 35 → 44 KB, `docs-editor-react` 17 → 20 KB,
+  `docs-editor-markdown` 4 → 5 KB, `docs-editor-ui` 12 → 18 KB gzip. Three
+  consumer scenarios moved with them: `preset: default schema` 44 → 47 KB,
+  `core: full barrel` 90 → 95 KB, `react: full barrel` 105 → 110 KB.
+
+  The phase added paragraph formatting, a font-size mark, a rebuilt link layer,
+  task lists and list styles, node movement, drag-and-drop, a listbox `Select`,
+  a `Checkbox`, and ten toolbar controls. A phase of that size *not* moving the
+  budgets would have been the surprising outcome, so these were raised
+  deliberately here rather than left for CI to discover.
+
+  Two numbers are worth reading carefully rather than waving through:
+
+  **The headless rows moved, slightly.** `minimal: headless state` went 36.0 →
+  36.5 KB and `minimal: editor, no media` 36.1 → 36.5 KB. Phase 8 recorded that
+  these "did not move a byte", so the claim no longer holds and is corrected
+  here rather than quietly left standing. The cause is `Transaction`, which every
+  headless consumer instantiates: it gained `setNodeType`, and `removeMark` gained
+  its all-marks form. Both are primitives the new commands are built on, and
+  neither can be tree-shaken out of a class. 0.5 KB for that is a fair price;
+  the alternative was a second transaction type nobody would want to learn.
+
+  **`docs-editor-ui` grew most, proportionally** — 11.4 → 15.6 KB, about 37%.
+  That package is the *opinionated* layer, so growth there is the least
+  concerning kind: nothing reaches a consumer of the headless primitives. The
+  `ui: styled primitives` consumer row confirms it, moving 25.4 → 27.3 KB
+  against a 30 KB budget while the headless rows above stayed within 0.5 KB.
+
+- **`docs-editor-react` package output: 15 → 17 KB gzip** (Phase 8, colour-scheme
+  resolution). `ThemeProvider` gained light/dark resolution and `useColorScheme`,
+  which is ~0.9 KB. Raised rather than absorbed because it is a real feature, and
+  the consumer row moved correspondingly little: `react: full barrel` went 97.4 →
+  97.9 KB against a 105 KB budget.
+
+- **`docs-editor-core` package output: 30 → 35 KB gzip** (Phase 8, the preset).
+  The gate caught the new `/preset` entry point, which emits a third bundle
+  (~4.6 KB gzip) containing the default schema, renderers, parse rules and
+  keymap. Raised because it is a *separate entry point*: nothing reaches a
+  consumer who does not import it, and the consumer rows prove that — `core:
+  full barrel` is unchanged at 83.8 KB, and a consumer who *does* import the
+  preset pays 39.6 KB, only 1.3 KB more than the media-enabled setup it shares
+  most of its code with.
+
+  The same change **improved** `createSchema only` from 24.5 to 19.4 KB, so its
+  budget was tightened 30 → 24 KB. Adding a third entry made tsup re-partition
+  its shared chunks, and the main entry stopped carrying code only the other
+  entries need. That was a side effect, not a goal — recorded because an
+  unexplained 5 KB drop is exactly as suspicious as an unexplained rise.
+
+- **`docs-editor-core` package output: 23 → 30 KB gzip** (Phase 7, media). The
+  gate caught the media module landing in core — 19.3 → 23.8 KB — which is the
+  process working: growth had to be justified rather than absorbed silently.
+  Raised because the *consumer* numbers show nobody pays for it unless they use
+  it: `schema only` moved 24.4 → 24.5 KB and `headless state` stayed at exactly
+  36.0 KB, so media tree-shakes cleanly and does not become the next
+  `prosemirror-tables` (finding 2). The consumer bundles, not the package total,
+  are the meaningful guard; the package total is a growth tripwire.
 
 The one target not met is browser typing on a 67-page document. Finding 7 shows
 why it is not an optimization target: only ~2 ms of it is JavaScript we control,

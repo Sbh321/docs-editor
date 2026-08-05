@@ -15,6 +15,7 @@ import type { Command } from "../commands";
 import type { Decoration } from "../decoration";
 import type { MarkRenderer, NodeRenderer } from "../dom-output-spec";
 import type { EngineState, EngineTransaction, EngineView, EngineViewOptions } from "../engine";
+import type { NodeViewMap } from "../node-view";
 import type { Schema } from "../schema";
 
 /**
@@ -42,6 +43,14 @@ export interface EditorViewOptions<
   readonly nodeRenderers?: NodeRenderer<NodeName>;
   /** Overrides the schema's generic default rendering for specific mark types. */
   readonly markRenderers?: MarkRenderer<MarkName>;
+  /**
+   * Custom node views by node type, for nodes the user interacts with — a
+   * resizable image, a node with its own controls. A view owns its node's DOM
+   * and lifecycle, so it takes precedence over any
+   * {@link EditorViewOptions.nodeRenderers} entry for the same type. See
+   * {@link NodeViewFactory}.
+   */
+  readonly nodeViews?: NodeViewMap<NodeName>;
   /**
    * Key bindings, keyed by a `prosemirror-keymap` key string (e.g.
    * `"Mod-b"` — `"Mod-"` resolves to Cmd on Mac and Ctrl elsewhere). Values
@@ -121,6 +130,11 @@ export class EditorView<NodeName extends string = string, MarkName extends strin
             nodeRenderers: options.nodeRenderers as unknown as NonNullable<
               EngineViewOptions["nodeRenderers"]
             >,
+          }
+        : {}),
+      ...(options.nodeViews
+        ? {
+            nodeViews: options.nodeViews as unknown as NonNullable<EngineViewOptions["nodeViews"]>,
           }
         : {}),
       ...(options.markRenderers

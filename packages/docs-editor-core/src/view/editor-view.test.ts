@@ -232,6 +232,28 @@ describe("EditorView", () => {
     view.destroy();
   });
 
+  it("snaps a drifted node decoration to its block instead of dropping it", () => {
+    const mount = document.createElement("div");
+    const view = new EditorView(mount, {
+      state: createTestState(),
+      nodeRenderers: { paragraph: () => ["p", 0] },
+    });
+
+    // Positions that no longer span the node exactly — the state every stored
+    // decoration is in for the frames between a keystroke and its consumer
+    // recomputing. The engine drops such a decoration silently, which for
+    // pagination meant page-break spacing blinking off and on with every
+    // keystroke: the visible "page snaps back and forth" bug (Phase 9.14).
+    view.setDecorations([
+      { from: 2, to: 5, type: "node", attributes: { style: "padding-top: 96px" } },
+    ]);
+
+    const paragraph = view.dom.querySelector("p");
+    expect(paragraph?.getAttribute("style")).toContain("padding-top: 96px");
+
+    view.destroy();
+  });
+
   it("composes decorations from independent sources without clobbering", () => {
     const mount = document.createElement("div");
     const view = new EditorView(mount, {

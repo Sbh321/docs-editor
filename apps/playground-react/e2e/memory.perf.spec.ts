@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { loadMarkdownDocument } from "./load-document";
+
 import type { CDPSession, Page } from "@playwright/test";
 
 /**
@@ -28,9 +30,8 @@ async function loadLargeDocument(page: Page) {
     { length: PARAGRAPHS },
     (_, index) => `Paragraph ${index + 1} of the benchmark document with enough words to wrap.`,
   ).join("\n\n");
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill(markdown);
-  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await loadMarkdownDocument(page, markdown);
+  // Let pagination measure and converge before measuring anything else.
   await page.waitForTimeout(2000);
 }
 
@@ -41,21 +42,32 @@ test("heap stays flat across a long edit/undo session", async ({ page }) => {
   const client = await page.context().newCDPSession(page);
   await client.send("HeapProfiler.enable");
 
-  const insert = page.getByRole("button", { name: 'Insert "Hi! "' });
+  // Real typing + the real Undo button. This used to click an `Insert "Hi! "`
+  // debug button that only ever existed in the pre-Phase-8 playground — the
+  // spec is excluded from the default suite, so its staleness went unnoticed
+  // until the 9.11 migration smoked every perf spec. Contiguous typing groups
+  // into one history event, so one Undo reverts one cycle, matching the old
+  // insert/undo shape.
+  const editable = page.locator(".de-editor [contenteditable='true']");
+  await editable.locator("p").first().click();
+  await page.keyboard.press("End");
   const undo = page.getByRole("button", { name: "Undo" });
+
+  const cycle = async () => {
+    await page.keyboard.type("Hi! ", { delay: 0 });
+    await undo.click();
+  };
 
   // Warm up so first-run allocations (lazily built caches, JIT) are not counted
   // as growth.
-  for (let cycle = 0; cycle < 10; cycle += 1) {
-    await insert.click();
-    await undo.click();
+  for (let i = 0; i < 10; i += 1) {
+    await cycle();
   }
 
   const baseline = await heapMB(client);
 
-  for (let cycle = 0; cycle < CYCLES; cycle += 1) {
-    await insert.click();
-    await undo.click();
+  for (let i = 0; i < CYCLES; i += 1) {
+    await cycle();
   }
 
   const after = await heapMB(client);

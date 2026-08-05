@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { loadMarkdownDocument } from "./load-document";
+
 /**
  * Isolates the cost of one pagination measurement pass (ROADMAP Phase 6,
  * Milestone 6.4).
@@ -20,15 +22,14 @@ test("cost of one pagination measurement pass", async ({ page }) => {
     { length: PARAGRAPHS },
     (_, index) => `Paragraph ${index + 1} of the benchmark document with enough words to wrap.`,
   ).join("\n\n");
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill(markdown);
-  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await loadMarkdownDocument(page, markdown);
+  // Let pagination measure and converge before measuring anything else.
   await page.waitForTimeout(2000);
 
   const result = await page.evaluate(
     ({ repeats }) => {
       const container = document.querySelector(
-        ".playground-editor [contenteditable='true']",
+        ".de-editor [contenteditable='true']",
       ) as HTMLElement | null;
       if (!container) {
         return null;

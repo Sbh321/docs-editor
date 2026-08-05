@@ -21,9 +21,23 @@ export {
 } from "./use-search-highlight";
 export { SearchHighlight } from "./search-highlight";
 
-export { ThemeProvider, renderThemeIcon, useTheme, useThemeClassName, useThemeIcon } from "./theme";
+export {
+  COLOR_SCHEME_ATTRIBUTE,
+  nextColorSchemePreference,
+  renderThemeIcon,
+  resolveColorScheme,
+  ThemeProvider,
+  useColorScheme,
+  useSystemColorScheme,
+  useTheme,
+  useThemeClassName,
+  useThemeIcon,
+} from "./theme";
 export { Toolbar, ToolbarButton, ToolbarGroup, ToolbarSeparator } from "./toolbar";
 export { ContextMenu, ContextMenuItem, FloatingToolbar, SlashMenu } from "./floating";
+export { BlockDragLayer, useFileDrop } from "./drag";
+export { createMediaNodeViews, useMediaNodeViews, useMediaUploads } from "./media";
+export { createTaskItemNodeViews, useTaskItemNodeViews } from "./lists";
 export { OutlinePanel, TableOfContents, useOutlineNavigation } from "./outline";
 export {
   PAGINATION_DECORATION_SOURCE,
@@ -35,13 +49,22 @@ export {
 } from "./page";
 export { ZoomControls, ZoomProvider, useZoom } from "./zoom";
 
+export type { BlockDragLayerProps, FileDropOptions, FileDropState } from "./drag";
+export type { TaskItemNodeViewOptions } from "./lists";
 export type { EditorProps } from "./editor";
 export type { EditorProviderProps } from "./editor-provider";
 export type { UseEditorResult } from "./use-editor";
 export type { UseCommandResult } from "./use-command";
 export type { UseSearchHighlightOptions } from "./use-search-highlight";
 export type { SearchHighlightProps } from "./search-highlight";
-export type { EditorTheme, ThemeIcon, ThemeProviderProps } from "./theme";
+export type {
+  ColorScheme,
+  ColorSchemePreference,
+  EditorTheme,
+  ThemeIcon,
+  ThemeProviderProps,
+  UseColorSchemeResult,
+} from "./theme";
 export type {
   ToolbarButtonProps,
   ToolbarGroupProps,
@@ -56,6 +79,7 @@ export type {
   SlashMenuItem,
   SlashMenuProps,
 } from "./floating";
+export type { MediaNodeViewBridge, MediaNodeViewOptions } from "./media";
 export type { OutlinePanelProps, TableOfContentsProps } from "./outline";
 export type {
   PageLayoutContextValue,

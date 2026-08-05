@@ -1,0 +1,300 @@
+/**
+ * Docs Editor — the document itself.
+ * ROADMAP Phase 8.
+ *
+ * Everything above styles the *application*. This styles the **page**, and the
+ * distinction matters: the chrome should look native to the operating system,
+ * while the document should look like a document. They use different fonts,
+ * different sizes and different leading on purpose.
+ */
+
+.de-page-content {
+  font-family: var(--de-font-document);
+  /* 16px rather than the 14px UI size. A document is read, not scanned, and at
+     the UI size an A4 measure runs to well over 100 characters per line. */
+  font-size: 16px;
+  line-height: var(--de-leading-relaxed);
+  color: var(--de-page-foreground);
+  /* Hyphens off: automatic hyphenation in an editable region moves text under
+     the caret as you type. */
+  hyphens: none;
+}
+
+/*
+ * No focus ring on the editable.
+ *
+ * The base stylesheet gives every focusable thing a ring, which is right for a
+ * button and wrong for a page: it draws a blue box around the document and
+ * makes it read as a form field. The caret *is* the focus indicator here, and
+ * it is unambiguous — so this is not a removed affordance, it is the correct
+ * one.
+ */
+.de-page-content [contenteditable],
+.de-page-content [contenteditable]:focus,
+.de-page-content [contenteditable]:focus-visible {
+  outline: none;
+}
+
+/*
+ * Fill the content box, so a click anywhere on the page's text column places
+ * the caret rather than only a click on the text itself.
+ *
+ * `flex`, not `min-height: 100%`. A percentage height resolves against the
+ * parent's *height*, and the content layer only has a `min-height` — so the
+ * percentage resolves against `auto` and does nothing. The editable ends up as
+ * tall as its text, and every click below the last line lands on the wrapper
+ * and blurs the editor instead of moving the caret.
+ */
+.de-page-content > * {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.de-page-content [contenteditable] {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Blocks
+ *
+ * Spacing is expressed as `margin-top` on everything except the first child,
+ * so blocks never collapse against the page's top margin.
+ * ------------------------------------------------------------------------ */
+
+.de-page-content :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, figure, hr) {
+  margin: 0;
+}
+
+/* Adjacent siblings rather than direct children of a known wrapper: the
+   editable sits at a depth this stylesheet should not have to know. */
+.de-page-content
+  :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, figure, hr)
+  + :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table, figure, hr) {
+  margin-top: 0.75em;
+}
+
+/* Headings ---------------------------------------------------------------- */
+
+.de-page-content :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 600;
+  line-height: var(--de-leading-tight);
+  /* Bound to the heading rather than the gap, so a heading always sits closer
+     to the text it introduces than to the text it follows. */
+  margin-top: 1.6em;
+  margin-bottom: 0.4em;
+  text-wrap: balance;
+}
+
+.de-page-content :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+
+.de-page-content h1 {
+  font-size: 2em;
+}
+.de-page-content h2 {
+  font-size: 1.5em;
+}
+.de-page-content h3 {
+  font-size: 1.25em;
+}
+.de-page-content h4 {
+  font-size: 1.1em;
+}
+.de-page-content :is(h5, h6) {
+  font-size: 1em;
+}
+.de-page-content h6 {
+  color: var(--de-muted-foreground);
+}
+
+/* Lists ------------------------------------------------------------------- */
+
+.de-page-content :is(ul, ol) {
+  padding-left: 1.6em;
+}
+
+.de-page-content li + li {
+  margin-top: 0.25em;
+}
+
+.de-page-content li > :is(ul, ol) {
+  margin-top: 0.25em;
+}
+
+/* Quote ------------------------------------------------------------------- */
+
+.de-page-content blockquote {
+  padding-left: 1em;
+  border-left: 3px solid var(--de-border-strong);
+  color: var(--de-muted-foreground);
+  font-style: italic;
+}
+
+/* Code -------------------------------------------------------------------- */
+
+.de-page-content code {
+  padding: 0.1em 0.3em;
+  border-radius: var(--de-radius-sm);
+  background: var(--de-muted);
+  font-family: var(--de-font-mono);
+  font-size: 0.9em;
+}
+
+.de-page-content pre {
+  padding: var(--de-space-3);
+  border-radius: var(--de-radius);
+  background: var(--de-muted);
+  overflow-x: auto;
+}
+
+.de-page-content pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.875em;
+  line-height: var(--de-leading-normal);
+}
+
+/* Rules ------------------------------------------------------------------- */
+
+.de-page-content hr {
+  height: 0;
+  border: 0;
+  border-top: 1px solid var(--de-border-strong);
+  margin: 1.5em 0;
+}
+
+/* Tables ------------------------------------------------------------------ */
+
+.de-page-content table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Fixed, so a long word in one cell cannot silently redistribute every
+     column's width as the user types. */
+  table-layout: fixed;
+}
+
+.de-page-content :is(td, th) {
+  padding: 0.4em 0.6em;
+  border: 1px solid var(--de-border-strong);
+  vertical-align: top;
+}
+
+.de-page-content th {
+  background: var(--de-muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Media ------------------------------------------------------------------- */
+
+.de-page-content figure {
+  margin: 1em 0;
+}
+
+.de-page-content figcaption {
+  margin-top: 0.5em;
+  color: var(--de-muted-foreground);
+  font-size: 0.875em;
+  text-align: center;
+}
+
+/* Links ------------------------------------------------------------------- */
+
+.de-page-content a {
+  color: var(--de-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Marks ------------------------------------------------------------------- */
+
+.de-page-content mark {
+  padding: 0.05em 0.1em;
+  border-radius: 2px;
+  /* Inherit, so highlighted text stays readable when the author picks a colour
+     the theme knows nothing about. */
+  color: inherit;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Search highlighting
+ *
+ * `useSearchHighlight` emits decorations carrying these class names and leaves
+ * the appearance to the stylesheet. Without a rule for them the matches are
+ * found and navigated but nothing on the page shows where they are.
+ * ------------------------------------------------------------------------ */
+
+.docs-editor-search-match {
+  border-radius: 2px;
+  background: rgb(250 204 21 / 45%);
+}
+
+.docs-editor-search-match-active {
+  /* The match you are standing on, distinct from the rest — otherwise
+     "next" moves the selection with no visible change on a page of hits. */
+  background: rgb(249 115 22 / 65%);
+  box-shadow: 0 0 0 1px rgb(194 65 12 / 60%);
+}
+
+[data-docs-editor-theme="dark"] .docs-editor-search-match {
+  background: rgb(250 204 21 / 30%);
+}
+
+[data-docs-editor-theme="dark"] .docs-editor-search-match-active {
+  background: rgb(249 115 22 / 55%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-docs-editor-theme="light"]) .docs-editor-search-match {
+    background: rgb(250 204 21 / 30%);
+  }
+
+  :root:not([data-docs-editor-theme="light"]) .docs-editor-search-match-active {
+    background: rgb(249 115 22 / 55%);
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Checklists (Phase 9)
+ * ------------------------------------------------------------------------ */
+
+/* A task list is a `ul`, which is what makes it paste into other applications
+   as a list — but it must not also show a bullet beside its checkbox. */
+.de-page-content ul[data-task-list] {
+  list-style: none;
+  padding-inline-start: 0;
+}
+
+.de-page-content ul[data-task-list] > li {
+  display: flex;
+  /* `baseline`, not `center`: the box should sit on the text's baseline the way
+     a bullet does, and stay there when the item wraps to several lines. */
+  align-items: baseline;
+  gap: var(--de-space-2);
+}
+
+/* The item's blocks live in a wrapper beside the checkbox rather than inside a
+   label, so they stay ordinary blocks — a nested list or a second paragraph
+   inside a task item behaves exactly as it would in a bullet. Without this the
+   wrapper is a block and drops below the box. */
+.de-page-content ul[data-task-list] > li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.de-page-content ul[data-task-list] input[type="checkbox"] {
+  flex: none;
+  /* Nudged onto the text's baseline; a checkbox has no baseline of its own. */
+  transform: translateY(0.15em);
+  accent-color: var(--de-primary);
+}
+
+/* Checked items read as done. Deliberately only a colour and no line-through:
+   struck-out text is markedly harder to read, and a checklist is often reviewed
+   after it is complete. */
+.de-page-content ul[data-task-list] > li[data-checked="true"] > div {
+  color: var(--de-muted-foreground);
+}

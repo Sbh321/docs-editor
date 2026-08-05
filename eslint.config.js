@@ -12,6 +12,7 @@ import { reactConfig } from "@docs-editor/eslint-config/react";
 // of living in a local eslint.config.js per package.
 const REACT_PATHS = [
   "packages/docs-editor-react/**",
+  "packages/docs-editor-ui/**",
   "packages/docs-editor-icons/**",
   "apps/**",
   "examples/**",

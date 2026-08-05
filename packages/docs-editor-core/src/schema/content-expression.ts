@@ -117,5 +117,19 @@ function matchFrom(
 }
 
 function matchesTerm(child: ContentDescriptor, term: ContentTerm): boolean {
-  return child.type === term.name || child.group === term.name;
+  return child.type === term.name || nodeGroups(child.group).includes(term.name);
+}
+
+/**
+ * A node's `group` may name several groups separated by whitespace (e.g.
+ * `"block media"`), so a node can be both "a block" and "media" and be matched
+ * by a content expression referring to either. This mirrors the engine, which
+ * splits the field the same way — treating the whole string as one group name
+ * would silently fail to match every multi-group node.
+ */
+export function nodeGroups(group: string | undefined): readonly string[] {
+  if (!group) {
+    return [];
+  }
+  return group.split(/\s+/).filter((name) => name.length > 0);
 }

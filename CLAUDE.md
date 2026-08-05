@@ -155,6 +155,27 @@ queries and must never reimplement it.
 
 Never duplicate editor logic here.
 
+## docs-editor
+
+The batteries-included layer (Phase 8): styled components, the design-token
+stylesheet, and the assembled `<DocsEditor />`. Depends on `docs-editor-react`
+and never the other way round.
+
+**Opinions live here; behaviour does not.** Every control delegates to a core
+command, exactly as the headless UI does. If a feature needs new editing
+behaviour, that behaviour belongs in the core and only its presentation belongs
+here.
+
+Do not move this package's contents into `docs-editor-react` to save a package.
+Doing so would force every primitives consumer to download an opinionated schema
+and a full styled UI, and would make the framework-agnostic default schema
+unusable outside React. Batteries-included and headless only conflict when they
+are the same package.
+
+Styling is plain CSS with custom properties. Never introduce a Tailwind or
+CSS-in-JS dependency here — a framework preset would make every consumer
+configure a build step before they had an editor.
+
 ## docs-editor-icons
 
 Optional default icon set for the headless UI (Phase 4). React components only;
@@ -200,6 +221,8 @@ Package dependencies must always flow inward.
 
 Applications
         ↓
+docs-editor (batteries-included, optional)
+        ↓
 Framework Adapters
         ↓
 docs-editor-core
@@ -217,6 +240,10 @@ Examples:
 ❌ docs-editor-core → Next.js
 
 ❌ docs-editor-core → Tailwind CSS
+
+❌ docs-editor-react → docs-editor
+
+❌ docs-editor → Tailwind CSS
 
 Package dependency direction should remain acyclic.
 

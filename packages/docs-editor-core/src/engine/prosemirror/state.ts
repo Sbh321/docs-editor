@@ -153,6 +153,41 @@ export function engineTransactionScrollIntoView(transaction: EngineTransaction):
 }
 
 /** Selects the whole node at `pos` (the position directly before it) as a unit. */
+/**
+ * Replaces the attributes of the node at `pos`, leaving its type and content
+ * alone — the primitive behind resizing, aligning or re-captioning a node.
+ *
+ * `attrs` must already be validated against the schema; like
+ * {@link engineTransactionInsertNode}, this layer performs no validation
+ * because it has no schema to validate against. Commands in `../commands` and
+ * `../media` validate through `Schema.blockType()` before calling it.
+ */
+export function engineTransactionSetNodeAttrs(
+  transaction: EngineTransaction,
+  pos: number,
+  attrs: Record<string, unknown>,
+): void {
+  transaction.setNodeMarkup(pos, null, attrs);
+}
+
+/**
+ * Replaces the *type* (and attributes) of the node at `pos`, keeping its
+ * content — how a bullet list becomes a numbered one without its items being
+ * removed and rebuilt, which would destroy the selection inside them.
+ */
+export function engineTransactionSetNodeType(
+  transaction: EngineTransaction,
+  pos: number,
+  type: string,
+  attrs: Record<string, unknown>,
+): void {
+  const engineType = transaction.doc.type.schema.nodes[type];
+  if (!engineType) {
+    throw new EngineConversionError(`Unknown node type "${type}" when converting to the engine.`);
+  }
+  transaction.setNodeMarkup(pos, engineType, attrs);
+}
+
 export function engineTransactionSelectNode(transaction: EngineTransaction, pos: number): void {
   transaction.setSelection(NodeSelection.create(transaction.doc, pos));
 }
@@ -176,8 +211,14 @@ export function engineTransactionRemoveMark(
   transaction: EngineTransaction,
   from: number,
   to: number,
-  markType: string,
+  markType: string | null,
 ): void {
+  // `null` means every mark, which is what ProseMirror's own `removeMark`
+  // takes a null mark type to mean — the primitive "clear formatting" needs.
+  if (markType === null) {
+    transaction.removeMark(from, to, null);
+    return;
+  }
   const engineMarkType = transaction.doc.type.schema.marks[markType];
   if (!engineMarkType) {
     throw new EngineConversionError(

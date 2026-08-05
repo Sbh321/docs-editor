@@ -1,5 +1,28 @@
 import {
+  AddColumnIcon,
+  AddRowIcon,
+  AlignCenterIcon,
+  AltTextIcon,
+  AlignJustifyIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
   BoldIcon,
+  ClearFormattingIcon,
+  DeleteColumnIcon,
+  DeleteRowIcon,
+  FileIcon,
+  DragHandleIcon,
+  FontSizeIcon,
+  HeaderRowIcon,
+  HighlightIcon,
+  IndentIcon,
+  LinkOffIcon,
+  MergeCellsIcon,
+  OutdentIcon,
+  PrintIcon,
+  TaskListIcon,
+  TrashIcon,
+  UploadIcon,
   BulletListIcon,
   ChevronDownIcon,
   CodeIcon,
@@ -13,6 +36,7 @@ import {
   MinusIcon,
   OrderedListIcon,
   OutlineIcon,
+  PageLayoutIcon,
   ParagraphIcon,
   PlusIcon,
   QuoteIcon,
@@ -56,6 +80,30 @@ export type DocsEditorIconName =
   | "redo"
   | "search"
   | "outline"
+  | "file"
+  | "print"
+  | "upload"
+  | "highlight"
+  | "addRow"
+  | "addColumn"
+  | "deleteRow"
+  | "deleteColumn"
+  | "mergeCells"
+  | "headerRow"
+  | "delete"
+  | "altText"
+  | "alignLeft"
+  | "alignCenter"
+  | "alignRight"
+  | "alignJustify"
+  | "indent"
+  | "outdent"
+  | "clearFormatting"
+  | "taskList"
+  | "linkOff"
+  | "fontSize"
+  | "dragHandle"
+  | "pageLayout"
   | "chevronDown"
   | "add"
   | "remove"
@@ -97,6 +145,30 @@ export const defaultIcons: Record<DocsEditorIconName, (props: IconProps) => Reac
   redo: RedoIcon,
   search: SearchIcon,
   outline: OutlineIcon,
+  file: FileIcon,
+  print: PrintIcon,
+  upload: UploadIcon,
+  highlight: HighlightIcon,
+  addRow: AddRowIcon,
+  addColumn: AddColumnIcon,
+  deleteRow: DeleteRowIcon,
+  deleteColumn: DeleteColumnIcon,
+  mergeCells: MergeCellsIcon,
+  headerRow: HeaderRowIcon,
+  delete: TrashIcon,
+  altText: AltTextIcon,
+  alignLeft: AlignLeftIcon,
+  alignCenter: AlignCenterIcon,
+  alignRight: AlignRightIcon,
+  alignJustify: AlignJustifyIcon,
+  indent: IndentIcon,
+  outdent: OutdentIcon,
+  clearFormatting: ClearFormattingIcon,
+  taskList: TaskListIcon,
+  linkOff: LinkOffIcon,
+  fontSize: FontSizeIcon,
+  dragHandle: DragHandleIcon,
+  pageLayout: PageLayoutIcon,
   chevronDown: ChevronDownIcon,
   add: PlusIcon,
   remove: MinusIcon,

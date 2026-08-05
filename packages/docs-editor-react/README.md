@@ -183,6 +183,44 @@ import { defaultIcons } from "@sbh321/docs-editor-icons";
 </ThemeProvider>;
 ```
 
+## Media node views
+
+`useMediaNodeViews()` returns interactive node views for the core's media types,
+ready to pass to `<Editor nodeViews>`:
+
+```tsx
+function MyEditor() {
+  const nodeViews = useMediaNodeViews();
+  return <Editor nodeRenderers={nodeRenderers} nodeViews={nodeViews} />;
+}
+```
+
+They are plain DOM rather than React: a node view's element is owned by the
+editor, so rendering React into it would mean a portal per node and a second
+reconciler racing the editor's own updates.
+
+Media can be resized by dragging a corner — and, because a pointer gesture with
+no keyboard equivalent is an accessibility regression, by keyboard:
+
+| Key | Effect |
+| --- | --- |
+| `←` / `→` | Narrow / widen (`resizeStep`, default 16px) |
+| `Shift` + `←` / `→` | Larger step (`coarseResizeMultiplier`, default 4×) |
+| `Alt` + `←` / `→` | Align left / right |
+
+Unmodified arrows are *not* swallowed when they do not resize, so the caret is
+never trapped on a media node.
+
+Each wrapper is focusable, exposes `role="group"`, and carries an `aria-label`
+built from the node's description — falling back to `"image (no description)"`
+so a missing description is announced rather than silent. Editing alt text
+updates both that label and the element's own `alt` in place, without rebuilding
+the element (which would re-fetch the image, or restart a video, on every
+keystroke).
+
+All editing behaviour delegates to core commands; this layer only handles
+interaction.
+
 ## Scripts
 
 - `pnpm build` — bundle with tsup (ESM only)

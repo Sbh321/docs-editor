@@ -37,7 +37,22 @@ export {
 } from "./prosemirror/commands";
 export { runEngineRedo, runEngineUndo } from "./prosemirror/history";
 export { createEngineTablePlugin } from "./prosemirror/tables";
-export { engineActiveBlock, engineActiveMarks } from "./prosemirror/queries";
+export {
+  engineActiveBlock,
+  engineActiveMarks,
+  engineAncestorsAtSelection,
+  engineFindNodeByAttr,
+  engineMarkRangeAtSelection,
+  engineNodeAt,
+  engineSelectedNode,
+  engineTextblocksInSelection,
+} from "./prosemirror/queries";
+export type {
+  EngineAncestor,
+  EngineMarkRange,
+  EngineTextblock,
+  SelectedEngineNode,
+} from "./prosemirror/queries";
 export {
   runEngineLiftListItem,
   runEngineSinkListItem,
@@ -74,6 +89,8 @@ export {
   engineTransactionScrollIntoView,
   engineTransactionSelectNode,
   engineTransactionSelection,
+  engineTransactionSetNodeAttrs,
+  engineTransactionSetNodeType,
   engineTransactionSetSelection,
 } from "./prosemirror/state";
 export {

@@ -5,6 +5,7 @@ import { EngineConversionError } from "../errors";
 import { fromEngineMark, fromEngineNode } from "./node-conversion";
 
 import type { DOMOutputSpec } from "../../dom-output-spec";
+import type { NodeViewFactory } from "../../node-view";
 import type { DocumentNode, Mark } from "../../schema";
 import type {
   DOMOutputSpec as ProseMirrorDOMOutputSpec,
@@ -84,4 +85,55 @@ function toEngineOutputSpec(spec: DOMOutputSpec): ProseMirrorDOMOutputSpec {
     );
   }
   return spec as unknown as ProseMirrorDOMOutputSpec;
+}
+
+/**
+ * Bridges a docs-editor {@link NodeViewFactory} to the engine's own node-view
+ * protocol.
+ *
+ * Everything optional on our side gets a safe default here, so a consumer who
+ * only supplies `dom` still gets a view that behaves: `update` returning `false`
+ * has the view rebuilt (correct, just less efficient), and the absent hooks
+ * simply do nothing.
+ */
+export function createCustomNodeView<NodeName extends string = string>(
+  node: ProseMirrorNode,
+  getPos: () => number | undefined,
+  factory: NodeViewFactory<NodeName>,
+): NodeView {
+  const spec = factory({
+    node: fromEngineNode<NodeName>(node),
+    // The engine reports `undefined` for a position it cannot resolve; `null`
+    // is the shape the public API uses.
+    getPos: () => getPos() ?? null,
+  });
+
+  const view: NodeView = {
+    dom: spec.dom,
+    contentDOM: spec.contentDOM ?? null,
+    update(updatedNode) {
+      if (updatedNode.type.name !== node.type.name) {
+        // A different node type must never reuse this view's DOM.
+        return false;
+      }
+      return spec.update?.(fromEngineNode<NodeName>(updatedNode)) ?? false;
+    },
+  };
+
+  if (spec.selectNode) {
+    view.selectNode = spec.selectNode;
+  }
+  if (spec.deselectNode) {
+    view.deselectNode = spec.deselectNode;
+  }
+  if (spec.ignoreMutation) {
+    view.ignoreMutation = spec.ignoreMutation;
+  }
+  if (spec.stopEvent) {
+    view.stopEvent = spec.stopEvent;
+  }
+  if (spec.destroy) {
+    view.destroy = spec.destroy;
+  }
+  return view;
 }

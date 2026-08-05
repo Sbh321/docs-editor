@@ -43,3 +43,4 @@ export {
 export { CommandRegistry } from "./registry";
 
 export type { Command, Dispatch } from "./types";
+export { moveBlock, moveNode, topLevelBlocks } from "./move-node";

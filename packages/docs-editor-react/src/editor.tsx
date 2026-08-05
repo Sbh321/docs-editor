@@ -4,7 +4,7 @@ import { useContext, useEffect, useRef } from "react";
 import { EditorViewContext } from "./editor-view-context";
 import { useEditor } from "./use-editor";
 
-import type { Command, MarkRenderer, NodeRenderer } from "@sbh321/docs-editor-core";
+import type { Command, MarkRenderer, NodeRenderer, NodeViewMap } from "@sbh321/docs-editor-core";
 import type { CSSProperties, ReactNode } from "react";
 
 export interface EditorProps<NodeName extends string = string, MarkName extends string = string> {
@@ -22,6 +22,12 @@ export interface EditorProps<NodeName extends string = string, MarkName extends 
   readonly nodeRenderers?: NodeRenderer<NodeName>;
   /** The {@link EditorProps.nodeRenderers} counterpart for marks. */
   readonly markRenderers?: MarkRenderer<MarkName>;
+  /**
+   * Custom node views for interactive nodes (resizable media, nodes with their
+   * own controls). Takes precedence over `nodeRenderers` for the same type.
+   * Read once at mount, like the renderers — see the note on the mount effect.
+   */
+  readonly nodeViews?: NodeViewMap<NodeName>;
   /**
    * Key bindings, keyed by a `prosemirror-keymap` string (e.g. `"Mod-b"` —
    * `"Mod-"` resolves to Cmd on Mac and Ctrl elsewhere). Values are ordinary
@@ -45,7 +51,7 @@ export function Editor<NodeName extends string = string, MarkName extends string
   const viewRegistry = useContext(EditorViewContext);
   const mountRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView<NodeName, MarkName> | null>(null);
-  const { editable, nodeRenderers, markRenderers, keymap } = props;
+  const { editable, nodeRenderers, markRenderers, nodeViews, keymap } = props;
 
   // Mounts the view once and tears it down on unmount. Later `state` changes
   // are synced via `updateState()` below rather than by reconstructing the
@@ -65,6 +71,7 @@ export function Editor<NodeName extends string = string, MarkName extends string
       ...(editable !== undefined ? { editable } : {}),
       ...(nodeRenderers ? { nodeRenderers } : {}),
       ...(markRenderers ? { markRenderers } : {}),
+      ...(nodeViews ? { nodeViews } : {}),
       ...(keymap ? { keymap } : {}),
     });
     viewRef.current = view;

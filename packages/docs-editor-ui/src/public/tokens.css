@@ -1,0 +1,280 @@
+/**
+ * Docs Editor — design tokens and base styles.
+ * ROADMAP Phase 8, Milestone 8.2.
+ *
+ *   import "@sbh321/docs-editor/styles.css";
+ *
+ * Plain CSS with custom properties, deliberately: a Tailwind preset would make
+ * every consumer configure a build step before they had an editor, and
+ * CLAUDE.md forbids coupling the editor to a CSS framework. Retheme by
+ * overriding tokens — no build configuration, works in every bundler.
+ *
+ * ## Colour model
+ *
+ * Every colour is a foreground/background *pair* named for its role rather than
+ * its appearance (`--de-muted` / `--de-muted-foreground`), so a dark scheme is a
+ * different set of values rather than a different set of rules. That is what
+ * keeps light and dark from drifting apart as components are added.
+ *
+ * ## Light and dark
+ *
+ * The system preference is the default signal, and an explicit `data-theme`
+ * overrides it **in both directions** — so "follow the system" and "I want dark
+ * even though my OS is light" both work. Order matters here: the attribute
+ * selectors come after the media query so they win.
+ */
+
+:root,
+[data-docs-editor-theme] {
+  /* Surfaces ------------------------------------------------------------- */
+  --de-background: #ffffff;
+  --de-foreground: #0a0a0a;
+
+  /* Raised surfaces: menus, dialogs, the toolbar. */
+  --de-surface: #ffffff;
+  --de-surface-foreground: #0a0a0a;
+
+  /* Recessed surfaces: the canvas behind the page, input wells. */
+  --de-muted: #f5f5f5;
+  /* #737373 read at only 4.35:1 on --de-muted; secondary text is still text. */
+  --de-muted-foreground: #666666;
+
+  /* Hover/pressed states on otherwise transparent controls. */
+  --de-accent-subtle: #f5f5f5;
+  --de-accent-subtle-foreground: #0a0a0a;
+
+  /* Primary action ------------------------------------------------------- */
+  --de-primary: #171717;
+  --de-primary-foreground: #fafafa;
+  /* A real hover colour, not an opacity hack: transparency over an unknown
+     backdrop produces an unknown colour, and the contrast tests cannot vouch
+     for a colour they cannot compute. */
+  --de-primary-hover: #2e2e2e;
+
+  /* Destructive action --------------------------------------------------- */
+  --de-destructive: #b91c1c;
+  --de-destructive-foreground: #fafafa;
+  --de-destructive-hover: #991b1b;
+
+  /* Editorial accent: selection, active tool, focus ring ----------------- */
+  --de-accent: #2563eb;
+  --de-accent-foreground: #ffffff;
+  /* Text selection needs to sit *behind* text and keep it readable, so it is a
+     tint of the accent rather than the accent itself. */
+  --de-selection: #bfdbfe;
+
+  /* Lines ---------------------------------------------------------------- */
+  --de-border: #e5e5e5;
+  /* A control's boundary is what identifies it, so this meets WCAG's 3:1
+     non-text minimum. `--de-border` is decorative and deliberately lighter. */
+  --de-border-strong: #8f8f8f;
+  --de-input: #e5e5e5;
+  --de-ring: var(--de-accent);
+
+  /* Tooltips invert the surface — the one place chrome sits *above* everything
+     and must read instantly against any background. */
+  --de-tooltip: #262626;
+  --de-tooltip-foreground: #fafafa;
+
+  /* Feedback ------------------------------------------------------------- */
+  --de-success: #15803d;
+  --de-warning: #b45309;
+  --de-danger: var(--de-destructive);
+
+  /* The document page ---------------------------------------------------- */
+  --de-page: #ffffff;
+  --de-page-foreground: #0a0a0a;
+  /* The desk the page sits on. Deliberately darker than `--de-muted`: at the
+     same value the white sheet has no visible edge and the document stops
+     reading as a page. */
+  --de-canvas: #e4e4e7;
+  --de-page-shadow: 0 1px 3px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 8%);
+
+  /* Radius --------------------------------------------------------------- */
+  --de-radius: 0.5rem;
+  --de-radius-sm: calc(var(--de-radius) - 2px);
+  --de-radius-lg: calc(var(--de-radius) + 2px);
+  --de-radius-full: 9999px;
+
+  /* Spacing — a 4px scale, so component padding stays on a rhythm. */
+  --de-space-1: 0.25rem;
+  --de-space-2: 0.5rem;
+  --de-space-3: 0.75rem;
+  --de-space-4: 1rem;
+  --de-space-5: 1.5rem;
+  --de-space-6: 2rem;
+
+  /* Typography ----------------------------------------------------------- */
+  --de-font-ui:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --de-font-document: Arial, Helvetica, sans-serif;
+  --de-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  --de-text-xs: 0.75rem;
+  --de-text-sm: 0.8125rem;
+  --de-text-base: 0.875rem;
+  --de-text-lg: 1rem;
+
+  --de-leading-tight: 1.25;
+  --de-leading-normal: 1.5;
+  --de-leading-relaxed: 1.7;
+
+  /* Elevation ------------------------------------------------------------ */
+  --de-shadow-sm: 0 1px 2px rgb(0 0 0 / 6%);
+  --de-shadow: 0 2px 8px rgb(0 0 0 / 8%), 0 1px 2px rgb(0 0 0 / 6%);
+  --de-shadow-lg: 0 12px 32px rgb(0 0 0 / 12%), 0 2px 8px rgb(0 0 0 / 8%);
+
+  /* Focus ---------------------------------------------------------------- */
+  --de-ring-width: 2px;
+  --de-ring-offset: 2px;
+
+  /* Layout --------------------------------------------------------------- */
+  --de-toolbar-height: 3rem;
+  --de-sidebar-width: 16rem;
+
+  /* Motion. Kept short: an editor is a tool, and waiting for a menu is worse
+     than a menu that simply appears. */
+  --de-duration-fast: 80ms;
+  --de-duration: 140ms;
+  --de-ease: cubic-bezier(0.2, 0, 0.13, 1);
+}
+
+/* Dark, from the system preference. Overridable below in both directions. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-docs-editor-theme="light"]),
+  [data-docs-editor-theme="dark"] {
+    --de-background: #0a0a0a;
+    --de-foreground: #fafafa;
+
+    --de-surface: #171717;
+    --de-surface-foreground: #fafafa;
+
+    --de-muted: #262626;
+    --de-muted-foreground: #a3a3a3;
+
+    --de-accent-subtle: #262626;
+    --de-accent-subtle-foreground: #fafafa;
+    --de-tooltip: #e4e4e7;
+    --de-tooltip-foreground: #18181b;
+
+    --de-primary: #fafafa;
+    --de-primary-foreground: #171717;
+    --de-primary-hover: #e4e4e7;
+
+    --de-destructive: #f87171;
+    --de-destructive-foreground: #1a0a0a;
+    --de-destructive-hover: #ef4444;
+
+    /* Lightened: the light-mode blue does not carry enough contrast against a
+       near-black surface to pass AA as text. */
+    --de-accent: #60a5fa;
+    --de-accent-foreground: #0a1a2f;
+    --de-selection: #1e3a8a;
+
+    --de-border: #2e2e2e;
+    --de-border-strong: #616161;
+    --de-input: #2e2e2e;
+
+    --de-success: #4ade80;
+    --de-warning: #fbbf24;
+
+    /* A dark "page" is still a page — lifted off the canvas, not merged with
+       it, or the document metaphor collapses. */
+    --de-page: #1c1c1c;
+    --de-page-foreground: #fafafa;
+    --de-canvas: #0a0a0a;
+    --de-page-shadow: 0 1px 3px rgb(0 0 0 / 60%), 0 1px 2px rgb(0 0 0 / 40%);
+
+    --de-shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+    --de-shadow: 0 2px 8px rgb(0 0 0 / 50%), 0 1px 2px rgb(0 0 0 / 40%);
+    --de-shadow-lg: 0 12px 32px rgb(0 0 0 / 60%), 0 2px 8px rgb(0 0 0 / 50%);
+  }
+}
+
+/* An explicit choice wins over the system preference, whichever way it points.
+   These come last so they override the media query above. */
+[data-docs-editor-theme="dark"] {
+  --de-background: #0a0a0a;
+  --de-foreground: #fafafa;
+
+  --de-surface: #171717;
+  --de-surface-foreground: #fafafa;
+
+  --de-muted: #262626;
+  --de-muted-foreground: #a3a3a3;
+
+  --de-accent-subtle: #262626;
+  --de-accent-subtle-foreground: #fafafa;
+  --de-tooltip: #e4e4e7;
+  --de-tooltip-foreground: #18181b;
+
+  --de-primary: #fafafa;
+  --de-primary-foreground: #171717;
+  --de-primary-hover: #e4e4e7;
+
+  --de-destructive: #f87171;
+  --de-destructive-foreground: #1a0a0a;
+  --de-destructive-hover: #ef4444;
+
+  --de-accent: #60a5fa;
+  --de-accent-foreground: #0a1a2f;
+  --de-selection: #1e3a8a;
+
+  --de-border: #2e2e2e;
+  --de-border-strong: #616161;
+  --de-input: #2e2e2e;
+
+  --de-success: #4ade80;
+  --de-warning: #fbbf24;
+
+  --de-page: #1c1c1c;
+  --de-page-foreground: #fafafa;
+  --de-canvas: #0a0a0a;
+  --de-page-shadow: 0 1px 3px rgb(0 0 0 / 60%), 0 1px 2px rgb(0 0 0 / 40%);
+
+  --de-shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+  --de-shadow: 0 2px 8px rgb(0 0 0 / 50%), 0 1px 2px rgb(0 0 0 / 40%);
+  --de-shadow-lg: 0 12px 32px rgb(0 0 0 / 60%), 0 2px 8px rgb(0 0 0 / 50%);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Base
+ * ------------------------------------------------------------------------ */
+
+.de-root {
+  color-scheme: light dark;
+  background: var(--de-background);
+  color: var(--de-foreground);
+  font-family: var(--de-font-ui);
+  font-size: var(--de-text-base);
+  line-height: var(--de-leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+.de-root *,
+.de-root *::before,
+.de-root *::after {
+  box-sizing: border-box;
+}
+
+/* One focus treatment everywhere, and only for keyboard users — a mouse click
+   should not leave a ring behind. */
+.de-root :focus-visible {
+  outline: var(--de-ring-width) solid var(--de-ring);
+  outline-offset: var(--de-ring-offset);
+  border-radius: var(--de-radius-sm);
+}
+
+.de-root ::selection {
+  background: var(--de-selection);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .de-root *,
+  .de-root *::before,
+  .de-root *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

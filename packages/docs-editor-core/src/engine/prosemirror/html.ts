@@ -151,7 +151,32 @@ const DANGEROUS_TAGS = new Set([
   "TEMPLATE",
 ]);
 const URL_ATTRIBUTES = new Set(["href", "src", "xlink:href", "action", "formaction", "poster"]);
-const DANGEROUS_URL = /^\s*(?:javascript|vbscript|data):/i;
+/** Schemes a browser may execute. Never permitted, in any attribute. */
+const EXECUTABLE_URL = /^\s*(?:javascript|vbscript):/i;
+const DATA_URL = /^\s*data:/i;
+/** A `data:` payload that is media rather than markup. */
+const MEDIA_DATA_URL = /^\s*data:(?:image|video|audio)\//i;
+/**
+ * Attributes that *load* a resource, as opposed to *navigating* to one.
+ *
+ * The distinction matters for `data:` URLs: `data:image/svg+xml` in an
+ * `<img src>` cannot execute script, but the same URL in an `href` renders as a
+ * document when followed, where it can. So inline media is allowed to load and
+ * never to navigate.
+ */
+const LOADING_ATTRIBUTES = new Set(["src", "poster"]);
+
+function isDangerousUrl(attributeName: string, value: string): boolean {
+  if (EXECUTABLE_URL.test(value)) {
+    return true;
+  }
+  if (DATA_URL.test(value)) {
+    // Inline images travel this way in exported HTML and are safe to load;
+    // anything that is not media, or that would be navigated to, is not.
+    return !(LOADING_ATTRIBUTES.has(attributeName) && MEDIA_DATA_URL.test(value));
+  }
+  return false;
+}
 
 /** Strips dangerous elements, event-handler attributes, and script-y URLs in place. */
 function sanitizeElement(root: Element): void {
@@ -164,7 +189,7 @@ function sanitizeElement(root: Element): void {
       const name = attribute.name.toLowerCase();
       if (name.startsWith("on")) {
         element.removeAttribute(attribute.name);
-      } else if (URL_ATTRIBUTES.has(name) && DANGEROUS_URL.test(attribute.value)) {
+      } else if (URL_ATTRIBUTES.has(name) && isDangerousUrl(name, attribute.value)) {
         element.removeAttribute(attribute.name);
       }
     }

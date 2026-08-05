@@ -47,10 +47,31 @@ configuration.
 Faithful within what DOCX and this mapping express: headings, paragraphs,
 blockquotes, bullet/ordered lists, code blocks, dividers, tables, and the
 bold/italic/underline/strikethrough/code/link marks, plus **text color** (run
-`color`) and **highlight color** (run `shading` fill). **Documented lossy
-cases:** images render as their alt text (inline image embedding is a future
-enhancement), and unknown block nodes degrade to their inline text. Colors are
-carried on export; whether they survive a re-import depends on `mammoth`.
+`color`) and **highlight color** (run `shading` fill).
+
+### Images
+
+Images embed for real when you supply an asset resolver. The exporter asks for
+bytes and never fetches them itself — the same boundary as media upload, since
+retrieving them means credentials, CORS and caching:
+
+```ts
+const exporter = new DocxExporter({
+  resolveAsset: async (src) => {
+    const response = await fetch(src);
+    return response.ok ? { data: new Uint8Array(await response.arrayBuffer()) } : null;
+  },
+});
+```
+
+Each distinct source is resolved once. Returning `null` — or throwing — is a
+normal outcome, not a failure: that image degrades to its alt text and the rest
+of the document still exports.
+
+**Documented lossy cases:** without a resolver, images fall back to alt text;
+video, audio, attachments and embeds degrade to their inline text; unknown block
+nodes degrade to their inline text. Colors are carried on export; whether they
+survive a re-import depends on `mammoth`.
 
 ## Import
 

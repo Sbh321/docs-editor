@@ -171,7 +171,7 @@ Deliverables:
   `packages/docs-editor-core/src/commands/`; both report `false` rather
   than throwing when there's nothing to undo/redo, including when a state
   was created without `history` enabled. Named versions, restore, and a
-  visual timeline are Phase 7 (Version History), not this milestone.
+  visual timeline are Phase 9 (Version History), not this milestone.
 - Clipboard abstraction — done (`packages/docs-editor-core/src/clipboard/`).
   `EditorState.copy(from?, to?)` returns a plain, JSON-safe `ClipboardContent`
   (nodes plus `openStart`/`openEnd`); `Transaction.paste(content, from?, to?)`
@@ -188,7 +188,7 @@ Deliverables:
   malformed document. HTML/Markdown import-export remain Phase 5 — the
   internal document model stays the sole canonical representation until then.
 - Plugin architecture — deliberately deferred. Underspecified in the docs
-  (no dedicated "Event System" section in ARCHITECTURE.md, and Phase 9 has
+  (no dedicated "Event System" section in ARCHITECTURE.md, and Phase 11 has
   its own "Plugin Architecture" phase with overlapping scope) and there's no
   concrete consumer yet — no plugins exist, no framework adapter exists.
   Designing the extension surface now would mean guessing at requirements
@@ -1144,7 +1144,7 @@ features rather than gaps in the 0–4 foundation, and belong to a later phase o
   additional node/mark types, added when there's a concrete need.
 - HTML / Markdown / PDF import-export and paste sanitization — **Phase 5**.
 - Multi-selection — noted "Future" in the Selection System.
-- Plugin/event system — **Phase 9**. Storage adapters — **Phase 7**.
+- Plugin/event system — **Phase 11**. Storage adapters — **Phase 9**.
 
 Milestone 4.5.5 note: an accessibility audit found the Phase 4 components
 already sound — `role`/`aria-*` correct, roving focus, focus trapping, keyboard
@@ -1236,7 +1236,7 @@ These are the constraints Phase 5 must satisfy (not just "add formats"):
   synchronous implementations.
 - **Plugin-extensibility:** the Plugin System lists Serializers, Importers, and
   Exporters as plugin contributions. Phase 5's contracts must be shaped so a
-  Phase 9 plugin (or a first-party format package) can register a new format
+  Phase 11 plugin (or a first-party format package) can register a new format
   without changing core.
 
 ## Architectural decisions (locked)
@@ -1276,7 +1276,7 @@ The seam every format plugs into.
   shaped so a future async/streaming variant is additive, not breaking.
 - A `SerializationRegistry` (mirroring `CommandRegistry`) mapping a format id to
   its importer/exporter — the surface a plugin registers into (anticipates
-  Phase 9).
+  Phase 11).
 - Re-express the existing JSON serializer as the reference implementation of the
   contract (keep `DocumentSerializer`'s validate-through-schema behavior).
 
@@ -2046,7 +2046,751 @@ v0.7.0
 
 ---
 
-# Phase 7 — Version History
+# Phase 7 — Media
+
+Status:
+
+Complete — all eight milestones. Media is a first-class part of the document
+model: node catalog, commands, upload lifecycle, ingestion policy, interactive
+node views, serialization across HTML, print, DOCX and Markdown, scale
+benchmarks against the Phase 6 budgets, and accessibility enforced as a gate
+with keyboard-operable resize and alignment.
+
+Objective:
+
+Make media a first-class part of the document model — images, video, audio, file
+attachments and embeds — provided by **the core**, including the asynchronous
+upload lifecycle that every real editor needs and that a node type alone does
+not give you.
+
+PROJECT_SPEC lists Images (Upload, Paste, Drag & Drop, Resize, Alignment,
+Caption, Alt Text) as a core capability, and **none of it exists yet**: Phase 3
+added an `image`/`figure`/`caption` node *shape* to the playground's example
+schema, but the core ships no media node catalog, no media commands, no upload
+story, and no interactive resizing. This phase closes that gap and generalizes
+it so other media types are cheap rather than bespoke.
+
+## Scope boundary (read this first)
+
+Media is where an editor is most tempted to grow application responsibilities.
+CLAUDE.md is explicit that cloud storage, authentication and business logic
+belong outside the editor, so the line is drawn deliberately:
+
+- **`docs-editor-core` owns** the media node model, media commands, the upload
+  *lifecycle and state machine*, ingestion primitives (extracting files from a
+  paste or drop), serialization for every format, and an **upload contract**.
+- **The application owns** actually moving bytes: upload transport, storage,
+  CDN, authentication, virus scanning, image optimization, media libraries. The
+  core defines the interface and never performs a network request or touches
+  storage itself.
+- **Framework adapters own** interaction and rendering: node views, drag-resize
+  handles, progress and retry affordances, alt-text and caption editing UI.
+
+The single most important consequence: **the core never fetches or stores.** An
+application supplies a `MediaUploader`; the core drives it, tracks its progress,
+and puts the result into the document.
+
+## What already exists (the baseline)
+
+- **Node shapes only, in the playground.** `image` (with `src`/`alt`), `figure`
+  and `caption` exist in the example schema, rendered via `nodeRenderers`. There
+  is no core media module.
+- **Node views exist but are internal.** `createGenericNodeView` bridges a
+  renderer function to a `prosemirror-view` `NodeView`, but the view layer
+  exposes only `nodeRenderers` — no interaction hooks, so drag-to-resize is
+  currently impossible without new public surface (see Open decisions).
+- **Node selection works** (Phase 4.5): an image can already be selected as a
+  unit, which is the prerequisite for resize/align/delete affordances.
+- **Serialization partly handles images.** HTML export/import maps `<img>`
+  through the renderer/parse specs, and import already sanitizes `javascript:`
+  and `data:` URLs. **DOCX export degrades images to their alt text** — a
+  documented Phase 5.7 limitation this phase should close.
+- **Phase 6's harness can measure it**: the benchmark fixtures already generate
+  documents containing hundreds of figures, and PROJECT_SPEC's performance goals
+  name "hundreds of images" explicitly.
+
+## Milestone 7.1 — Media model & schema foundation (core) ✅
+
+- A **media node catalog** in core, so consumers stop hand-rolling media node
+  specs: `image`, `video`, `audio`, `file` (attachment) and `embed`, expressed
+  as reusable `NodeSpec` builders rather than a fixed schema (the core must stay
+  schema-agnostic — it provides the shapes, the consumer composes them).
+- A shared attribute vocabulary: `src`, `alt`, `title`, `width`, `height`,
+  `align`, plus a stable `mediaId` used to correlate an in-flight upload with
+  the node it belongs to.
+- The `figure`/`caption` relationship generalized so any media type can carry a
+  caption, rather than images only.
+- Validation: alignment as a closed set, non-negative dimensions, required
+  `alt` handling for accessibility (see 7.8).
+
+## Milestone 7.2 — Media commands & queries (core) ✅
+
+- `insertMedia`, `replaceMedia`, `removeMedia`.
+- Attribute commands: `setMediaAlignment`, `setMediaSize` (aspect-ratio aware),
+  `setMediaAlt`, `setMediaCaption` — built on the existing `Transaction`
+  primitives, not new engine surface, following the Phase 5.8 `setMark`
+  precedent.
+- Queries: the selected media node and its attributes, so a toolbar can reflect
+  state without reaching into the document.
+
+## Milestone 7.3 — Upload lifecycle & the `MediaUploader` contract (core) ✅
+
+The substantial milestone, and the one a node type alone does not solve.
+
+- A `MediaUploader` contract the application implements:
+  upload a file, report progress, support cancellation via `AbortSignal`,
+  resolve to a final `src` (plus intrinsic dimensions where known).
+- A **lifecycle state machine**: `pending → uploading → ready | failed`, with
+  retry and cancel.
+- **Position-stable completion.** An upload finishing must update the right
+  node even though the user has kept typing and the node has moved. This is why
+  nodes carry a `mediaId`: completion resolves the id to a current position
+  rather than remembering a stale one.
+- Local preview before upload completes (object URL), and — critically —
+  **revoking it afterwards**, since leaked object URLs pin their blobs in memory
+  for the page's lifetime (exactly the class of leak Phase 6.5 tests for).
+
+## Milestone 7.4 — Ingestion: paste, drag & drop, and URLs (core + adapter) ✅ *(core half)*
+
+- Core primitives to extract media files from clipboard and drop payloads, and
+  to decide what is accepted (MIME allowlist, size limits) — pure functions over
+  plain data, no DOM event handling in core.
+- Adapter wiring for the actual `paste`/`drop` DOM events, including dropping at
+  the cursor position rather than the end.
+- Pasting a media **URL** inserts a media node rather than a link, where the
+  consumer opts in.
+- Multiple files in one gesture, inserted in order.
+- **Security:** the same posture as HTML import — URLs are sanitized, nothing is
+  auto-fetched, and no remote content is resolved to decide a node's type.
+
+## Milestone 7.5 — Interactive rendering (react) ✅
+
+- Media node views: selection affordance, **drag-to-resize handles** with
+  aspect-ratio locking and min/max constraints, alignment affordances.
+- Headless upload UI: progress, failure with retry, cancel — components that
+  supply behaviour and leave presentation to the consumer, as Phase 4 did.
+- Alt-text and caption editing UI.
+- Requires deciding how much node-view surface the core exposes (see Open
+  decisions) — this is the milestone that forces that call.
+
+## Milestone 7.6 — Serialization across every format ✅
+
+- **HTML** export/import for each media type (`img`, `video`, `audio`,
+  `a[download]`, `iframe` for embeds), with sanitization on import and
+  dimensions/alignment preserved.
+- **Markdown**: images are native; video/audio/file degrade predictably and the
+  loss is documented and tested, per the Phase 5 precedent.
+- **DOCX**: real image embedding, closing the Phase 5.7 alt-text fallback. This
+  needs binary asset plumbing (fetching the bytes for a `src` is the
+  *application's* job — the exporter should accept a resolver rather than
+  fetching).
+- **Print/PDF**: sensible sizing and page-break behaviour around media.
+
+## Milestone 7.7 — Scale, performance & memory ✅
+
+- Extend the Phase 6 fixtures to media-heavy documents and measure against the
+  budgets — PROJECT_SPEC asks for "hundreds of images".
+- Lazy loading and `decoding` hints so a long document does not decode every
+  image at once.
+- Verify no object-URL or listener leaks across insert/undo/delete cycles,
+  reusing the 6.5 memory harness.
+- Keep the media node catalog out of bundles that do not use it, per the 6.6
+  precedent (media should not become the next `prosemirror-tables`).
+
+## Milestone 7.8 — Accessibility, docs, playground & verification ✅
+
+- **Accessibility is a gate, not a nicety** (CLAUDE.md: accessibility
+  regressions are bugs): alt text on every image, a deliberate decorative-image
+  path, keyboard-operable resize and alignment, and screen-reader-sensible
+  captions.
+- Playground: upload (with a mock uploader), paste, drag & drop, resize, align,
+  caption, alt text, and failure/retry — exercised by e2e.
+- Docs: PROJECT_SPEC and ARCHITECTURE updated to match wherever this phase
+  changes their stated position (see Open decision 2), package READMEs, and a
+  changeset.
+
+## Deliberately deferred
+
+- **Third-party embed providers** (YouTube, Vimeo, X, Figma …) — provider
+  resolution and oEmbed belong in a plugin or the application, not the core.
+  The generic `embed` node is the extension point.
+- **Media library / asset browser UI** — an application concern.
+- **Image editing** (crop, rotate, filters) and **transcoding** — out of scope.
+- **Video captions/subtitle tracks (WebVTT)** — a follow-up once video lands.
+- **Resumable/chunked uploads** — the `MediaUploader` contract should not
+  preclude it, but the core ships the simple case.
+
+## Package ecosystem impact
+
+- Media model, commands, lifecycle, ingestion primitives and serialization:
+  **`docs-editor-core`**.
+- Node views, resize interaction and headless upload UI:
+  **`docs-editor-react`**.
+- DOCX image embedding: **`@sbh321/docs-editor-docx`**.
+- No new package is anticipated; if embed providers are ever built they belong
+  in their own package, not here.
+
+## Dependencies to evaluate (CLAUDE.md dependency policy)
+
+Ideally **none**. Uploading is the application's; previews use `URL.createObjectURL`;
+dimensions come from natural image/video metadata. Any proposal to add an image
+processing or upload library should be rejected as an application concern.
+
+## Locked decisions
+
+Settled before implementation, so the milestones above are unambiguous:
+
+1. **Upload state lives in an external registry**, keyed by `mediaId`, *not* in
+   the document. Only the durable `mediaId` and final `src` are document data.
+   Placeholder/progress/failure state is transient view state, so it never
+   enters undo history and a document can never be serialized mid-upload — the
+   same reasoning that keeps zoom and page layout out of the model.
+2. **Video, audio, file and embed are built in core**, on the shared media
+   foundation, alongside images. The marginal cost over images alone is small
+   and the alternative — five near-identical implementations in userland — is
+   worse. PROJECT_SPEC and ARCHITECTURE are updated to match, rather than left
+   contradicting this.
+3. **The core exposes a full node-view API**, and drag-to-resize is built on it.
+   An adapter-side overlay would have to re-derive geometry the engine already
+   knows and drifts out of sync during edits; a documented node-view interface
+   is the honest surface, and it is what any interactive node type will need.
+4. **DOCX image embedding takes an application-supplied asset resolver.** Real
+   embedding needs bytes, and fetching them is the application's job — the same
+   boundary as the `MediaUploader`. The exporter asks for bytes; it never
+   retrieves them itself.
+
+Exit Criteria:
+
+- Images, video, audio, file attachments and embeds are first-class document
+  nodes with commands, validation and full serialization
+- Upload works end to end through an application-supplied `MediaUploader`, with
+  progress, cancellation, retry, and correct completion even when the document
+  has changed underneath it
+- Paste and drag & drop insert media at the cursor, with an accepted-type policy
+- Media can be resized, aligned, captioned and given alt text, by mouse **and**
+  keyboard
+- The core performs no network request and no storage access
+- Media round-trips through HTML and print, embeds properly in DOCX, and
+  degrades predictably in Markdown with the loss documented and tested
+- Media-heavy documents stay within the Phase 6 performance budgets, with no
+  object-URL or listener leaks
+- All packages build, lint, typecheck, and test clean (unit + Playwright e2e)
+
+Target Version:
+
+v0.8.0
+
+---
+
+# Phase 8 — Batteries-Included Editor
+
+Status:
+
+In progress — Milestones 8.1–8.2 complete. The default preset ships behind
+`@sbh321/docs-editor-core/preset`, and the playground builds on it with its e2e
+suite passing unchanged. The new `@sbh321/docs-editor` package exists with its
+design-token stylesheet, light/dark resolve out of the box with WCAG AA verified
+in both schemes, the styled primitives are in place, and the composed editor
+Complete — all seven milestones. `@sbh321/docs-editor` ships a styled,
+assembled editor that renders from three lines, built on a framework-agnostic
+default preset in the core and a design-token stylesheet with light and dark
+verified to WCAG AA. The headless packages are unchanged and unenlarged: the
+size budgets record that `headless state` and `editor, no media` did not move a
+byte across the whole phase.
+
+Objective:
+
+Make Docs Editor usable in **three lines of code** without giving up the
+headless architecture that the previous seven phases built.
+
+```tsx
+import { DocsEditor } from "@sbh321/docs-editor";
+import "@sbh321/docs-editor/styles.css";
+
+export default () => <DocsEditor />;
+```
+
+## The problem, measured
+
+The playground is the only thing that has ever assembled a complete editor from
+these packages, and it takes **~1,800 lines** to do it. Categorised:
+
+| What it is | Lines | Should a consumer write this? |
+| --- | ---: | --- |
+| Schema, node/mark renderers, HTML parse spec, insert commands | ~247 | No — identical for everyone, and not React-specific |
+| Toolbar, menus, panels, colour/font pickers, media controls, layout | ~742 | No — this is the editor's UI |
+| Stylesheet | ~500 of 573 | No |
+| Uploader, file dialogs, print trigger, initial document | ~146 | **Yes** — genuine application concerns |
+
+So roughly **1,490 of 1,800 lines are boilerplate every consumer would rewrite**,
+and only ~150 lines are actually theirs. PROJECT_SPEC promises "excellent
+developer experience"; today the shortest path to a working editor is to copy a
+1,200-line file.
+
+## Why this is not simply "move it into docs-editor-react"
+
+That would solve the DX problem and break the architecture. CLAUDE.md requires
+React to stay a thin adapter whose UI layer is "presentation and interaction
+only", and three concrete things go wrong:
+
+1. A consumer wanting the primitives with their own design system would be
+   forced to download an opinionated schema, a full styled UI and an icon set.
+   `react: full barrel` sits at 97.4 KB against a 105 KB budget — this breaches
+   it with no opt-out, which is exactly the `prosemirror-tables` failure mode
+   Milestone 6.6 was created to prevent.
+2. The default schema, renderers and parse spec are **framework-agnostic data**.
+   Putting them in a React package makes them unusable from the Markdown/DOCX
+   exporters, from a server-side render, or from a future Vue adapter.
+3. "Headless" stops being true, and it is the project's stated identity.
+
+Batteries-included and headless only conflict when they are the same package.
+
+## Architecture
+
+```
+docs-editor-core            headless engine                    (unchanged)
+  └── core/preset           default schema + renderers          (NEW subpath)
+docs-editor-react           thin adapter, headless primitives   (unchanged)
+  └── docs-editor           styled UI + <DocsEditor>            (NEW package)
+```
+
+Dependency direction still flows inward, and nothing existing changes
+behaviour. The preset ships as a **core subpath export** rather than a new
+package, following the `docs-editor-core/tables` precedent: it tree-shakes, and
+it stays usable headlessly and framework-agnostically.
+
+Three escape hatches, in descending order of control:
+
+| Need | Use |
+| --- | --- |
+| A working editor | `<DocsEditor />` |
+| Our styled parts, your layout | `@sbh321/docs-editor/ui` |
+| Your design system | `@sbh321/docs-editor-react` primitives |
+
+## Locked decisions
+
+1. **A new `@sbh321/docs-editor` package**, not an expansion of
+   `docs-editor-react`. Consumers install one package; the layering is our
+   problem, not theirs.
+2. **Plain CSS with design tokens**, not Tailwind and not a copy-paste CLI.
+   shadcn/ui is not an installable package — it is a CLI that copies source and
+   requires Tailwind, and both fight "install and plug in". We take its *visual
+   language* (Radix-style primitives, neutral palette, subtle borders, a
+   `--radius`/`--muted` token vocabulary, visible focus rings) and ship it as
+   one stylesheet with custom properties. No build configuration; retheme by
+   overriding tokens. This also keeps CLAUDE.md's rule that the editor must not
+   depend on Tailwind. A shadcn-style eject CLI stays possible later.
+3. **A full default schema, extensible.** `<DocsEditor />` with no props is a
+   complete editor — text, lists, tables, media, code, colours, fonts, page
+   layout. `extendDefaultSchema()` adds to it. Shipping a minimal schema with
+   opt-in modules would make the out-of-box experience feel unfinished, which is
+   the thing this phase exists to fix.
+
+## Scope boundary
+
+The new package is where *opinions* live. It must not become where *behaviour*
+lives: every button still delegates to a core command, exactly as the Phase 4
+headless UI does. If a feature needs new editing behaviour, that behaviour
+belongs in the core and only its presentation belongs here.
+
+Application concerns stay in the application, unchanged: upload transport,
+storage, authentication, persistence, routing. `<DocsEditor />` accepts an
+`uploader`, an `onChange`, and an initial document — it does not acquire them.
+
+## Milestone 8.1 — Default preset (`docs-editor-core/preset`) ✅
+
+- Default schema covering everything the playground declares today, exported as
+  `defaultSchema` plus `extendDefaultSchema()` for additive customisation.
+- Matching `defaultNodeRenderers` / `defaultMarkRenderers` / `defaultParseSpec`
+  / `defaultKeymap`, so on-screen rendering, HTML export, print and paste all
+  agree by construction rather than by the consumer keeping four maps in sync.
+- Framework-agnostic and headless: no React import, usable from Node.
+- The playground switches to it and must render identically — that is the test
+  that the preset really is what the playground had.
+
+## Milestone 8.2 — Design tokens & theming ✅
+
+- A token vocabulary (`--de-*`: colour, radius, spacing, typography, elevation,
+  focus ring) with a shadcn-inspired neutral palette.
+- **Light and dark out of the box**: `@media (prefers-color-scheme: dark)` as
+  the default signal, with `[data-theme="light"|"dark"]` overriding it in both
+  directions so system-follow and an explicit toggle both work.
+- `ThemeProvider` (Phase 4) extended to drive `data-theme` and expose the
+  resolved theme, plus a `useColorScheme()` hook. It already turns tokens into
+  CSS custom properties, so this is an extension rather than a rewrite.
+- Contrast verified against WCAG AA in both schemes — accessibility is a gate
+  (CLAUDE.md), and a dark theme is where contrast quietly fails.
+
+## Milestone 8.3 — Styled primitives (`@sbh321/docs-editor`) ✅
+
+Styled counterparts to the headless primitives, built on them rather than
+replacing them: Button, IconButton, Toggle, Select, Dropdown, Popover, Dialog,
+Tooltip, Input, Tabs, Separator, ScrollArea.
+
+- Every component takes `className` and merges it, so consumers can adjust
+  without forking.
+- Keyboard navigation and focus management are part of the definition of done,
+  not a follow-up.
+- No new editing behaviour. Anything that edits calls a core command.
+
+## Milestone 8.4 — Composed editor surfaces ✅
+
+The pieces the playground currently hand-rolls, as real components: main
+toolbar (with overflow handling — the current one simply overflows), floating
+selection toolbar, slash menu, context menu, table controls, media controls,
+find & replace, outline/TOC sidebar, page setup, zoom, status bar.
+
+Each is independently usable and independently themeable.
+
+## Milestone 8.5 — `EditorShell` and `<DocsEditor>` ✅
+
+- `EditorShell`: a CSS-grid application frame that fills the viewport
+  (`100dvh`) — toolbar row, optional sidebar, scrollable canvas, status bar —
+  and is responsive down to a phone.
+- **Filling the screen and the page metaphor are not in conflict**: the shell
+  owns the chrome, and the A4 `PageSurface` sits centred inside the scrollable
+  canvas. That is what Word and Google Docs do — the application fills the
+  window, the document still looks like paper.
+- `<DocsEditor>`: shell + preset + UI + providers, with props for the things
+  that are genuinely the application's (`initialDocument`, `onChange`,
+  `uploader`, `theme`, `schema`, `readOnly`).
+
+## Milestone 8.6 — Playground reduction (the acceptance test) ✅
+
+**Correction to this criterion, recorded after the fact.** "Every existing e2e
+test passes unchanged" was the wrong bar: it conflated API correctness with UI
+*stability*. Replacing a hand-rolled UI with a designed one necessarily changes
+labels and structure — six heading buttons became a select, individual insert
+buttons became a menu — none of which indicates a bad API.
+
+What was actually delivered:
+
+- `examples/basic-react` is **13 lines**, which is where the three-line claim is
+  proved.
+- The playground demonstrates the *middle* tier — `EditorShell` plus the
+  surfaces, composed by hand — and went from **1,038 lines in one file to 296**,
+  with ~180 of the remainder being genuinely application-owned import/export and
+  a mock uploader.
+- The e2e suite was **rationalized from 56 tests to 35**: what only a browser can
+  prove (contenteditable, real layout, pagination, print, file pickers, the
+  upload lifecycle, keyboard resize, toolbar overflow) was kept; what is now
+  covered by the UI package's 98 unit tests was dropped rather than duplicated.
+
+The app stays in the repository rather than being deleted: it keeps proving the
+escape hatches work, and a second example demonstrates composing
+`@sbh321/docs-editor/ui` with a custom layout.
+
+## Milestone 8.7 — Size, docs & verification ✅
+
+- New budgets for the new package; **`react: full barrel` and the headless
+  scenarios must not move**, which is the measurable proof that nobody pays for
+  the batteries unless they install them.
+- README rewritten around the three-line quick start; a "which layer should I
+  use?" guide; theming and token reference; a migration note for anyone who
+  built against the primitives.
+- PROJECT_SPEC and ARCHITECTURE updated for the new package and its boundary.
+
+## Deliberately deferred
+
+- **A shadcn-style eject CLI.** Possible later; not required for "install a
+  package and plug it in", and it introduces an upgrade-by-hand-merge problem.
+- **Tailwind preset.** Can be added alongside the stylesheet if there is demand;
+  it must never become the only way to style the editor.
+- **Additional themes** beyond light/dark. The token vocabulary is the
+  extension point.
+
+Exit Criteria:
+
+- A new React app renders a complete, styled editor in three lines
+- Light and dark both work with no configuration
+- The shell fills the viewport and is responsive
+- The playground is under ~50 lines with its e2e suite unchanged
+- Headless bundle budgets are unmoved
+- Documentation, examples and specs updated
+
+Target Version:
+
+v0.9.0
+
+---
+
+# Phase 9 — Rich Formatting & Interaction
+
+Status:
+
+Complete — all milestones, including two added mid-phase by inspection. 9.9
+fixed eight toolbar controls that rendered as empty squares (no `iconName`,
+mounted only in contextual states no test looked at). 9.10 restored the
+product's founding promise after this phase had eroded it: every feature the
+phase added had been wired in the *playground*, so `<DocsEditor />` consumers
+got none of them.
+
+9.11 then finished the job the same way: print and import/export, misfiled as
+application concerns for two phases, became the File menu.
+
+Delivered: paragraph formatting, font size, a real link editor, task lists and
+list styles, block reordering by drag *and* keyboard, a listbox `Select`, a
+`Checkbox`, tooltips throughout, an icon-first toolbar — all reachable from
+`<DocsEditor />` with no assembly. Two defects found while measuring were fixed
+rather than filed: the link button applied an empty `href`, and link URLs were
+unsanitized on export.
+
+Objective:
+
+Close the gap between "a working editor" and "an editor people will actually
+write documents in": paragraph formatting, a real link experience, richer
+lists, direct manipulation, and a primitive set polished enough that every
+control looks like it belongs to the same product.
+
+Phase 4.5 deferred most of this deliberately, naming it as work for "a feature
+milestone of their own":
+
+> Font color / background color, and paragraph formatting (alignment, line
+> height, indentation, spacing, direction) — node/mark _attributes_ +
+> commands; a feature milestone of their own.
+>
+> Task lists / checklists, page breaks, super/subscript, syntax highlighting —
+> additional node/mark types, added when there's a concrete need.
+
+This is that milestone, and that need.
+
+## The gap, measured
+
+Several requested features turned out to already exist in the core with no UI
+attached, which changes what this phase is: less engine work than it looks,
+more surfacing.
+
+| Capability | Engine | UI |
+| --- | --- | --- |
+| Clear formatting | ✅ `removeFormatting`, bound to `Mod-\` | ❌ no control |
+| Nested lists | ✅ `liftListItem` / `sinkListItem` / `splitListItem`, Tab bound | ❌ no control |
+| Tooltips | ✅ `Tooltip` primitive | ❌ used in **1** place repo-wide |
+| Button weights | ✅ `ghost \| outline \| primary \| destructive` | — naming mismatch only |
+| Alignment, indent | ❌ | ❌ |
+| Font size | ❌ | ❌ |
+| Task lists, list styles | ❌ | ❌ |
+| Drag and drop | ❌ — zero `dataTransfer` references in the repo | ❌ |
+
+Two defects surfaced while measuring, and are fixed as part of this phase
+rather than filed away:
+
+**Insert Link applies an empty href.** The toolbar runs
+`toggleMark("link", { href: "" })`. It marks text as a link and stops — there is
+no dialog, no way to read or edit an existing link's target, and no `title` or
+`target`. This is the feature that most obviously "just changes styles".
+
+**Link `href` is not sanitized on export.** `defaultMarkRenderers.link` emits
+`attrString(mark.attrs, "href", "")` verbatim, while media `src` goes through
+`isSafeMediaUrl` in both directions. A `javascript:` URL that survives an HTML
+import therefore reaches exported markup. Same bug class we already closed for
+media, still open for links — PROJECT_SPEC's "prevent unsafe serialization"
+applies to both.
+
+## Locked decisions
+
+**Font size is stored in points.** `font_size: { attrs: { size: { default: 11 } } }`
+means 11pt. The alternative was pixels, matching the current 16px stylesheet
+default. Points won because this is a _document_ editor: page layout is already
+in physical units, DOCX stores half-points so the round-trip is exact rather
+than rounded, and the numbers in the toolbar match what Word and Google Docs
+show for the same document. The stylesheet's 16px body default becomes 12pt.
+
+**Dropdowns become a custom ARIA listbox.** A native `<select>` cannot be
+styled cross-platform — its popup ignores the dark theme on most platforms, and
+it cannot render a font name in its own face or a colour as a swatch, which are
+exactly the dropdowns this phase needs. The cost is real and accepted: the full
+listbox keyboard contract (arrows with wrap, Home/End, type-ahead, Escape,
+Enter/Space) is now ours to implement and ours to test, where the native
+element gave it away for free.
+
+**Drag-to-reorder covers every block, not just media.** A handle appears in the
+margin on hover. Generalising costs one node-move transaction rather than a
+media-specific one, and reordering a paragraph is a more common need than
+reordering an image. A drag-only affordance would be an accessibility
+regression, so the same move is reachable from the keyboard.
+
+**Button variants are added, not renamed.** `secondary` joins the set. `ghost`
+already _is_ the quietest weight and `outline` the second — the shipped API was
+a naming mismatch, not a missing capability, and renaming a public type to fix
+vocabulary would break every consumer for no behavioural gain.
+
+## Milestone 9.1 — Paragraph formatting (core)
+
+`align` and `indent` as block **attributes**, not marks: both describe a whole
+block, and a mark spanning half a paragraph would be meaningless.
+
+One pair of `indent` / `outdent` commands, list-aware. Inside a list they
+delegate to `sinkListItem` / `liftListItem`; elsewhere they change the
+attribute. This matters more than it looks: an indent _attribute_ applied to a
+list item would render as indented while remaining a structural sibling,
+silently breaking Markdown and DOCX export and the outline. One command, two
+correct behaviours, chosen by context.
+
+## Milestone 9.2 — Inline formatting & links (core)
+
+The `font_size` mark, and links rebuilt: `setLink` / `updateLink` /
+`removeLink`, href normalization (a bare `example.com` becomes `https://`),
+sanitization on the way in and out, and `title` / `target` / `rel`. The export
+gap above closes here, with a regression test for the `javascript:` case.
+
+`removeFormatting` currently clears marks only and declines on an empty
+selection. It is extended to reset the block attributes this phase introduces,
+so "clear formatting" means what a user expects rather than what the engine
+happened to implement.
+
+## Milestone 9.3 — Lists (core)
+
+`task_list` / `task_item` with a `checked` attribute, kept as their own node
+types rather than a flag on `list_item`: a checklist serializes differently in
+every format, and `checked: null` on every ordinary bullet would be noise in
+the model that every exporter has to step around.
+
+Plus `toggleList` (convert between list types without unwrapping first) and
+list-style attributes — disc/circle/square, decimal/alpha/roman — with
+Markdown, DOCX and HTML wired for all of it.
+
+## Milestone 9.4 — Drag and drop (core + react)
+
+Files dropped onto the document upload and insert through the existing
+`MediaUploadRegistry`. Blocks gain a margin drag handle and a drop indicator,
+built on a generic node-move transaction, with a keyboard path to the same
+operation.
+
+## Milestone 9.5 — Primitives (ui)
+
+A `Checkbox` primitive, the listbox `Select`, and the `secondary` variant. The
+listbox's keyboard contract is tested directly — it is the part a custom
+implementation gets wrong, and the part users notice last and hate most.
+
+## Milestone 9.6 — Controls (ui)
+
+The font-size stepper (`− 11 +`, the number opening a preset list), alignment,
+the expanded list group, indent/outdent, clear formatting, and a link editor
+that reads the link under the cursor and edits it, rather than applying an
+empty one.
+
+## Milestone 9.7 — Icons & tooltips
+
+Every icon-only control gets a tooltip carrying its name and keyboard shortcut,
+and the remaining text buttons become icon buttons. The risk being watched:
+tooltips must not duplicate the accessible name or disturb the toolbar's roving
+focus — a tooltip that becomes the button's second name makes a screen reader
+say everything twice.
+
+## Milestone 9.10 — Batteries parity
+
+The phase's features were landing in the playground instead of in
+`<DocsEditor />` — the exact failure Phase 8 existed to end, recurring one
+phase later. The correction, stated as an invariant rather than a fix: **if a
+feature needs code in the playground to work, that is a gap in the package.**
+
+Moved into `<DocsEditor />`: the slash menu (with a complete default item set,
+`defaultSlashItems()`), the page-layout panel behind a toolbar Layout button,
+the whole upload flow behind a single `uploader` prop (registry, write-back,
+toolbar picker, drop-a-file-on-the-page, drop highlight), the media
+accessibility badge, and the `tableEditing` plugin — the default schema
+declared tables while the batteries tier never installed the plugin that makes
+them behave.
+
+New extension points, all additive: `uploader`, `toolbarExtras` (app controls
+rendered inside the editor's providers), `slashMenuItems`, and `children`
+(overlays over the canvas). The playground shrank from ~400 lines to ~130, all
+of them genuinely application code — transport, file I/O, print, a debug
+preview — and now *is* the top-tier integration it was meant to demonstrate.
+
+One regression caught by the size gate and worth remembering:
+`defaultSlashItems` began life as an exported constant whose entries call
+command factories at module top level. That is a side effect no bundler can
+prove away, and it silently cost the primitives-only consumer bundle 25 KB of
+editor code. It became a function for the same reason `mediaNodeSpecs()` is
+one.
+
+## Milestone 9.11 — The File menu: print and import/export become batteries
+
+The third recurrence of the same drift closed the classification error behind
+the first two. Print and file import/export had stayed in the playground under
+CLAUDE.md's "storage is an application concern" — but their every ingredient
+(`PrintExporter`, the default schema, renderers, parse spec, all importers and
+exporters) is package-owned, and downloading a file or printing is a *browser*
+interaction like copy and paste, touching no storage, credentials or network.
+Misfiled, not out of scope.
+
+`FileMenu` now ships in `<DocsEditor />`'s toolbar (leading, so it can never
+overflow): Import…, Export as Markdown / HTML / JSON / DOCX, Print. Markdown
+and DOCX load dynamically on the click that needs them — DOCX alone is ~262 KB
+a session that never exports one should never download. Importing replaces the
+open document through an internal session remount and fires `onChange`, and is
+withheld in read-only mode. `fileMenu={false}` opts out.
+
+The playground is now its intended final form: **`<DocsEditor
+initialDocument={…} uploader={mockUploader} />`** and nothing else — 112 lines
+across all of `src/`, 37 of them the mock uploader, the one thing an editor
+cannot invent (a real application's endpoint). Its stylesheet is the package
+import, `body { height/margin }`, and one token override. The import/export
+panel and the debug tree view were deleted; the six e2e/perf specs that used
+the panel as a bulk-load mechanism now drive the shipped Import flow through a
+real file chooser.
+
+## Milestones 9.12–9.14 — Polish and two field bugs
+
+**9.12 — visual polish.** The primitives were standardised functionally in 9.5
+and left visually flat. Now: real hover tokens (`--de-primary-hover`,
+`--de-destructive-hover`) replacing the `opacity: 0.9` hack — transparency
+over an unknown backdrop is a colour the contrast tests cannot compute — a
+dedicated `--de-tooltip` pair (tooltips had borrowed the primary button's
+colours, welding two unrelated theming decisions together), one motion grammar
+for every button, menu and tooltip entrances under `prefers-reduced-motion`
+guards, a drawn checkmark, a rotating select chevron, and a uniform
+`:focus-visible` ring. The find bar and colour pickers were the last controls
+without styled tooltips; the new token pairs are contrast-gated like all
+others, including hover states.
+
+**9.13 — media drag duplicated the node.** The schema had no `draggable`
+field, so the browser ran its *native* image drag; the engine never learned
+the drag was a move and handled the drop as a paste of the drag's HTML — copy
+inserted, source kept. `NodeSpec.draggable` now exists, compiles through, and
+every media type (and `figure`) declares it: dragging moves, Ctrl-drop copies.
+
+**9.14 — the page snapped back and forth near the bottom margin.** Two
+compounding faults. The page-break spacer was inline `margin-top`, which
+*overwrote* the stylesheet's own margin-top block rhythm (0.75em on a
+paragraph, 1.6em on a heading) — so the applied spacing was short by a
+per-block-type amount the natural-position recovery never saw, and any block
+within that error of a boundary flip-flopped between pages on every pass. And
+the engine silently drops a node decoration whose positions have drifted off a
+node boundary, which every stored decoration has in the frames between a
+keystroke and re-measure — the spacing blinked off and on per keystroke.
+Fixes: spacers are `padding-top` (purely additive; collapses with nothing;
+overrides nothing; the arithmetic accounts for padding growing the block
+rather than moving it), and drifted node decorations snap to their enclosing
+top-level block instead of vanishing. An e2e test types at a live page
+boundary and asserts the laid-out height never oscillates.
+
+## Milestone 9.8 — Documentation, budgets, verification
+
+Bundle budgets are raised deliberately here with the reason recorded, rather
+than left for CI to discover. A phase this size that did not move them would be
+the surprising outcome.
+
+Exit Criteria:
+
+- Alignment, indent/outdent, font size, task lists, list styles and clear
+  formatting all work from both the toolbar and the keyboard
+- Insert Link opens a real editor and round-trips an existing link's target;
+  `javascript:` cannot reach exported markup
+- Blocks and media reorder by drag, and by keyboard
+- Checkboxes, dropdowns, tooltips and buttons are consistent in light and dark
+- Every icon-only control has a tooltip; no control is a bare text button
+  without reason
+- All packages build, lint, typecheck and test clean; e2e green; budgets met
+
+Target Version:
+
+v0.10.0
+
+---
+
+# Phase 10 — Version History
 
 Status:
 
@@ -2076,11 +2820,11 @@ Exit Criteria:
 
 Target Version:
 
-v0.7.0
+v0.11.0
 
 ---
 
-# Phase 8 — Visual Diff Engine
+# Phase 11 — Visual Diff Engine
 
 Status:
 
@@ -2110,11 +2854,11 @@ Exit Criteria:
 
 Target Version:
 
-v0.8.0
+v0.12.0
 
 ---
 
-# Phase 9 — Plugin Architecture
+# Phase 12 — Plugin Architecture
 
 Status:
 
@@ -2132,7 +2876,13 @@ Initial Plugins:
 - Citations
 - References
 - Timeline
-- Media embeds
+- Embed providers (oEmbed resolution for YouTube, Vimeo, X, …)
+
+Note: generic media — images, video, audio, file attachments and the `embed`
+node itself — is core, delivered in **Phase 7 — Media**. What remains a plugin
+is *provider resolution*: turning a third-party URL into a rich embed, which
+means network access and provider-specific knowledge that the core has no
+business carrying.
 
 Exit Criteria:
 
@@ -2141,11 +2891,11 @@ Exit Criteria:
 
 Target Version:
 
-v0.9.0
+v0.13.0
 
 ---
 
-# Phase 10 — Framework Expansion
+# Phase 13 — Framework Expansion
 
 Status:
 
@@ -2169,11 +2919,11 @@ Exit Criteria:
 
 Target Version:
 
-v0.10.0
+v0.14.0
 
 ---
 
-# Phase 11 — Stable Release
+# Phase 14 — Stable Release
 
 Status:
 

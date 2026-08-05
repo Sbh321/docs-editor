@@ -1,93 +1,98 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test } from "@playwright/test";
 
-// Milestone 5.6: the playground's import/export panel drives the serialization
-// registry (JSON, HTML, Markdown) and the print/PDF action end-to-end.
+import { exportDownload, loadMarkdownDocument } from "./load-document";
+import { toolbarControl } from "./toolbar";
 
-test("exports the current document to JSON", async ({ page }) => {
+/**
+ * The File menu (ROADMAP Phase 9, Milestone 9.11).
+ *
+ * Import, export and print used to be playground code, on the claim that they
+ * were the application's. They are the editor's — every ingredient is
+ * package-owned — so these now test the shipped `FileMenu` through
+ * `<DocsEditor />`, and only a browser can prove them: real downloads, a real
+ * file chooser, a real popup.
+ */
+
+const EDITOR = ".de-editor";
+
+test("exports Markdown that round-trips the document", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByLabel("Serialization format").selectOption("json");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const download = await exportDownload(page, "Export as Markdown");
+  expect(download.suggestedFilename()).toBe("document.md");
 
-  const io = page.getByLabel("Serialized document");
-  await expect(io).toHaveValue(/"type":\s*"doc"/);
-  await expect(io).toHaveValue(/Hello, Docs Editor\./);
+  const path = await download.path();
+  const markdown = await readFile(path, "utf8");
+  expect(markdown).toMatch(/^# Docs Editor/m);
+  expect(markdown).toContain("Hello, Docs Editor.");
 });
 
-test("exports the current document to Markdown", async ({ page }) => {
+test("exports HTML and JSON with real content", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const html = await exportDownload(page, "Export as HTML");
+  expect(html.suggestedFilename()).toBe("document.html");
+  expect(await readFile(await html.path(), "utf8")).toContain("<h1>Docs Editor</h1>");
 
-  await expect(page.getByLabel("Serialized document")).toHaveValue(/Hello, Docs Editor\./);
+  const json = await exportDownload(page, "Export as JSON");
+  expect(json.suggestedFilename()).toBe("document.json");
+  const parsed = JSON.parse(await readFile(await json.path(), "utf8")) as { type: string };
+  expect(parsed.type).toBe("doc");
 });
 
-test("imports a Markdown document, replacing the editor content", async ({ page }) => {
+test("exports a DOCX file", async ({ page }) => {
   await page.goto("/");
-  const editor = page.locator(".playground-editor");
 
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill("# Imported\n\nHas **bold** now.");
-  await page.getByRole("button", { name: "Import", exact: true }).click();
-
-  await expect(editor.locator("h1")).toHaveText("Imported");
-  await expect(editor.locator("strong")).toHaveText("bold");
-  await expect(editor).not.toContainText("Hello, Docs Editor.");
-});
-
-test("round-trips through HTML: export then re-import preserves structure", async ({ page }) => {
-  await page.goto("/");
-  const editor = page.locator(".playground-editor");
-
-  // Make the document non-trivial first: turn the paragraph into a heading.
-  await page.getByRole("button", { name: "Heading 1" }).click();
-  await expect(editor.locator("h1")).toHaveText("Hello, Docs Editor.");
-
-  await page.getByLabel("Serialization format").selectOption("html");
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  await expect(page.getByLabel("Serialized document")).toHaveValue(
-    /<h1>Hello, Docs Editor\.<\/h1>/,
-  );
-
-  // Re-importing the exported HTML rebuilds the same heading.
-  await page.getByRole("button", { name: "Import", exact: true }).click();
-  await expect(editor.locator("h1")).toHaveText("Hello, Docs Editor.");
-});
-
-test("DOCX round-trips through the UI: export downloads a .docx, re-import restores it", async ({
-  page,
-}) => {
-  await page.goto("/");
-  const editor = page.locator(".playground-editor");
-
-  // Make the document distinctive, then export it to .docx.
-  await page.getByRole("button", { name: 'Insert "Hi! "' }).click();
-  await expect(editor).toContainText("Hi! Hello, Docs Editor.");
-
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export DOCX" }).click();
-  const download = await downloadPromise;
+  // The lazily-imported `docx` bundle has to load and produce real bytes.
+  const download = await exportDownload(page, "Export as DOCX");
   expect(download.suggestedFilename()).toBe("document.docx");
-  const docxPath = await download.path();
 
-  // Diverge the on-screen document so a successful import is observable.
-  await page.getByRole("button", { name: 'Insert "Hi! "' }).click();
-  await expect(editor).toContainText("Hi! Hi! Hello, Docs Editor.");
-
-  // Import the downloaded file: the editor reverts to the exported content.
-  await page.getByLabel("Import DOCX file").setInputFiles(docxPath);
-  await expect(editor).toContainText("Hi! Hello, Docs Editor.");
-  await expect(editor).not.toContainText("Hi! Hi!");
+  const bytes = await readFile(await download.path());
+  // ZIP local-file-header magic "PK\x03\x04" — a .docx is a ZIP.
+  expect([bytes[0], bytes[1], bytes[2], bytes[3]]).toEqual([0x50, 0x4b, 0x03, 0x04]);
 });
 
-test("Print / PDF opens a clean print document generated from the model", async ({ page }) => {
+test("imports Markdown through the file chooser", async ({ page }) => {
   await page.goto("/");
 
-  const popupPromise = page.waitForEvent("popup");
-  await page.getByRole("button", { name: "Print / PDF" }).click();
-  const popup = await popupPromise;
+  await loadMarkdownDocument(page, "# Imported title\n\nImported body text.");
 
-  await expect(popup.locator(".docs-editor-print")).toContainText("Hello, Docs Editor.");
-  await popup.close();
+  await expect(page.locator(`${EDITOR} h1`)).toHaveText("Imported title");
+  await expect(page.locator(EDITOR)).toContainText("Imported body text.");
+});
+
+test("a document round-trips: edit, export, re-import", async ({ page }) => {
+  await page.goto("/");
+  const editable = page.locator(`${EDITOR} [contenteditable='true']`);
+
+  await editable.locator("p").first().click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" Edited before export.");
+  await expect(editable).toContainText("Edited before export.");
+
+  const download = await exportDownload(page, "Export as Markdown");
+  const markdown = await readFile(await download.path(), "utf8");
+
+  // Wipe the document by importing something else, then bring the export back.
+  await loadMarkdownDocument(page, "Placeholder.", "wipe.md");
+  await expect(editable).not.toContainText("Edited before export.");
+
+  await loadMarkdownDocument(page, markdown, "restored.md");
+  await expect(editable).toContainText("Edited before export.");
+});
+
+test("opens a print window generated from the model", async ({ page, context }) => {
+  await page.goto("/");
+
+  await (await toolbarControl(page, "File")).click();
+  const popup = context.waitForEvent("page");
+  await page.getByRole("menuitem", { name: "Print" }).click();
+
+  const printPage = await popup;
+  await printPage.waitForLoadState("domcontentloaded");
+  // Generated from the model: the document's text, none of the editor chrome.
+  expect(await printPage.content()).toContain("Docs Editor");
+  expect(await printPage.locator("[contenteditable]").count()).toBe(0);
 });

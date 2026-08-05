@@ -1,0 +1,166 @@
+/**
+ * Docs Editor — the application shell.
+ * ROADMAP Phase 8, Milestone 8.5.
+ */
+
+.de-shell {
+  display: grid;
+  /*
+   * `100dvh`, not `100vh`. On mobile browsers `vh` measures the viewport
+   * *without* the collapsing address bar, so a `100vh` shell is taller than the
+   * screen and its status bar sits below the fold — permanently unreachable,
+   * because the bar only collapses on scroll and the shell itself never
+   * scrolls.
+   */
+  height: 100dvh;
+  grid-template-rows: auto 1fr auto;
+  /* Nothing here scrolls; only the canvas does. */
+  overflow: hidden;
+  background: var(--de-background);
+  color: var(--de-foreground);
+  font-family: var(--de-font-ui);
+}
+
+.de-shell__toolbar {
+  grid-area: toolbar;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  background: var(--de-surface);
+  border-bottom: 1px solid var(--de-border);
+}
+
+.de-shell__toolbar-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.de-shell__toolbar .de-toolbar-surface {
+  /* The shell already draws the rule; a second one doubles the line. */
+  border-bottom: 0;
+}
+
+.de-shell__sidebar-toggle {
+  flex: none;
+  margin-left: var(--de-space-2);
+}
+
+/* Which edge the panel sits on. A properties panel belongs on the right; a
+   navigation panel such as an outline belongs on the left. */
+.de-shell--sidebar-left {
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "toolbar toolbar"
+    "sidebar canvas"
+    "status  status";
+}
+
+.de-shell--sidebar-right {
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "toolbar toolbar"
+    "canvas  sidebar"
+    "status  status";
+}
+
+.de-shell__sidebar {
+  grid-area: sidebar;
+  width: var(--de-sidebar-width);
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--de-surface);
+}
+
+/* The rule always faces the canvas. */
+.de-shell--sidebar-left .de-shell__sidebar {
+  border-right: 1px solid var(--de-border);
+}
+
+.de-shell--sidebar-right .de-shell__sidebar {
+  border-left: 1px solid var(--de-border);
+}
+
+.de-shell__canvas {
+  grid-area: canvas;
+  /* Anchors the find bar, which floats over the document. */
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  /* The one scrolling region in the shell. */
+  overflow: auto;
+  background: var(--de-canvas);
+}
+
+.de-shell__status {
+  grid-area: status;
+}
+
+/* An explicit toggle wins over the width-based default, in both directions. */
+.de-shell--sidebar-closed .de-shell__sidebar {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  /*
+   * Narrow: the sidebar overlays the canvas rather than squeezing it. A
+   * 16rem panel beside a page on a 900px screen leaves the document too narrow
+   * to read, which defeats the point of showing both.
+   */
+  .de-shell,
+  .de-shell--sidebar-left,
+  .de-shell--sidebar-right {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "toolbar"
+      "canvas"
+      "status";
+  }
+
+  .de-shell__sidebar {
+    display: none;
+  }
+
+  .de-shell--sidebar-open .de-shell__sidebar {
+    display: block;
+    position: absolute;
+    top: var(--de-toolbar-height);
+    bottom: 0;
+    z-index: 30;
+    box-shadow: var(--de-shadow-lg);
+  }
+
+  /* Overlaid from whichever edge it belongs to, so it does not appear to jump
+     sides when the window narrows. */
+  .de-shell--sidebar-left.de-shell--sidebar-open .de-shell__sidebar {
+    left: 0;
+  }
+
+  .de-shell--sidebar-right.de-shell--sidebar-open .de-shell__sidebar {
+    right: 0;
+  }
+
+  .de-shell {
+    position: relative;
+  }
+}
+
+@media (max-width: 480px) {
+  .de-shell__canvas {
+    /* Every pixel of width matters on a phone; the desk margin does not. */
+    padding: 0;
+  }
+
+  .de-shell__canvas .de-canvas {
+    padding: var(--de-space-3) 0;
+  }
+}
+
+/* The editor's own content area inside the page. */
+.de-editor {
+  min-height: 100%;
+  outline: none;
+}
+
+.de-editor [contenteditable="true"] {
+  outline: none;
+}

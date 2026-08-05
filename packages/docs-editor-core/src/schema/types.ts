@@ -56,6 +56,15 @@ export interface NodeSpec {
    * defaults to `false`.
    */
   readonly isolating?: boolean;
+  /**
+   * Whether a node of this type can be dragged as a unit (without being
+   * selected first). What makes dragging an image *move* it: the engine
+   * registers the drag as its own, so the drop deletes the source. Without
+   * this the browser runs a native image drag, the engine treats the drop as
+   * a paste of the drag's HTML, and the image is silently **duplicated** —
+   * which is exactly what shipped until Phase 9.13.
+   */
+  readonly draggable?: boolean;
 }
 
 /** Declares one mark type in a {@link SchemaSpec}. */

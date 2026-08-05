@@ -1,0 +1,1349 @@
+/**
+ * Docs Editor — styled primitives.
+ * ROADMAP Phase 8, Milestone 8.3.
+ *
+ * Every rule resolves against the tokens in `tokens.css`, so retheming happens
+ * there and nothing here needs touching. Class names are semantic and do not
+ * conflict, which is why `cn()` can simply join them.
+ */
+
+/* ------------------------------------------------------------------------ *
+ * Button
+ * ------------------------------------------------------------------------ */
+
+.de-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--de-space-2);
+  padding: 0 var(--de-space-3);
+  height: 2rem;
+  border: 1px solid transparent;
+  border-radius: var(--de-radius-sm);
+  background: transparent;
+  color: var(--de-foreground);
+  font-family: inherit;
+  font-size: var(--de-text-base);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--de-duration-fast) var(--de-ease),
+    border-color var(--de-duration-fast) var(--de-ease),
+    color var(--de-duration-fast) var(--de-ease);
+}
+
+.de-button:disabled {
+  /* Dimmed *and* not interactive: opacity alone still invites a click. */
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.de-button__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+/* Sizes */
+.de-button--sm {
+  height: 1.75rem;
+  padding: 0 var(--de-space-2);
+  font-size: var(--de-text-sm);
+}
+
+.de-button--icon {
+  width: 2rem;
+  padding: 0;
+}
+
+.de-button--icon-sm {
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+}
+
+/* Variants */
+.de-button--ghost:hover:not(:disabled) {
+  background: var(--de-accent-subtle);
+  color: var(--de-accent-subtle-foreground);
+}
+
+.de-button--outline {
+  border-color: var(--de-border-strong);
+  background: var(--de-surface);
+}
+
+.de-button--outline:hover:not(:disabled) {
+  background: var(--de-accent-subtle);
+}
+
+.de-button--primary {
+  background: var(--de-primary);
+  color: var(--de-primary-foreground);
+}
+
+.de-button--primary:hover:not(:disabled) {
+  /* A dedicated token, not `opacity` — transparency over an unknown backdrop
+     is a colour the contrast tests cannot compute, and it dulled the label
+     with the fill. `--de-primary-hover` is verified against
+     `--de-primary-foreground` like any other pair. */
+  background: var(--de-primary-hover);
+}
+
+.de-button--secondary {
+  background: var(--de-muted);
+  /* The body foreground, not `--de-muted-foreground`: that token is tuned for
+     de-emphasised text on the page surface and drops below AA once the
+     background is the muted fill. */
+  color: var(--de-surface-foreground);
+}
+
+.de-button--secondary:hover:not(:disabled) {
+  background: var(--de-accent-subtle);
+  color: var(--de-accent-subtle-foreground);
+}
+
+.de-button--destructive {
+  background: var(--de-destructive);
+  color: var(--de-destructive-foreground);
+}
+
+.de-button--destructive:hover:not(:disabled) {
+  background: var(--de-destructive-hover);
+}
+
+/* One motion grammar for every button: colours ease briefly, and the pressed
+   instant dips the button a hair — enough that a click *feels* received
+   without reading as animation. */
+.de-button {
+  transition:
+    background var(--de-duration-fast) var(--de-ease),
+    color var(--de-duration-fast) var(--de-ease),
+    border-color var(--de-duration-fast) var(--de-ease),
+    box-shadow var(--de-duration-fast) var(--de-ease);
+}
+
+.de-button:active:not(:disabled) {
+  transform: translateY(0.5px);
+}
+
+/* The same ring on every control, keyboard-only. `:focus` alone would draw it
+   on every click; `:focus-visible` is the browser's own "this focus came from
+   the keyboard" judgement. */
+.de-button:focus-visible,
+.de-select__trigger:focus-visible,
+.de-input:focus-visible {
+  outline: var(--de-ring-width) solid var(--de-ring);
+  outline-offset: 1px;
+}
+
+/* Pressed — a formatting control that is *on*. */
+.de-button--pressed,
+.de-button[aria-pressed="true"] {
+  background: var(--de-accent-subtle);
+  color: var(--de-accent);
+}
+
+.de-button--pressed.de-button--primary {
+  color: var(--de-primary-foreground);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Separator
+ * ------------------------------------------------------------------------ */
+
+.de-separator {
+  flex: none;
+  background: var(--de-border);
+}
+
+.de-separator--horizontal {
+  height: 1px;
+  width: 100%;
+  margin: var(--de-space-2) 0;
+}
+
+.de-separator--vertical {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--de-space-1) var(--de-space-2);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Field, Input, Select
+ * ------------------------------------------------------------------------ */
+
+.de-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-1);
+  min-width: 0;
+}
+
+.de-field__label {
+  font-size: var(--de-text-sm);
+  font-weight: 500;
+  color: var(--de-foreground);
+}
+
+.de-field__message {
+  margin: 0;
+  font-size: var(--de-text-xs);
+  color: var(--de-muted-foreground);
+}
+
+.de-field__message--error {
+  color: var(--de-destructive);
+}
+
+.de-input,
+.de-select__control {
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  padding: 0 var(--de-space-3);
+  border: 1px solid var(--de-input);
+  border-radius: var(--de-radius-sm);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+  font-family: inherit;
+  font-size: var(--de-text-base);
+  transition: border-color var(--de-duration-fast) var(--de-ease);
+}
+
+.de-input:hover:not(:disabled),
+.de-select__control:hover:not(:disabled) {
+  border-color: var(--de-border-strong);
+}
+
+.de-input::placeholder {
+  color: var(--de-muted-foreground);
+}
+
+.de-input:disabled,
+.de-select__control:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.de-input[aria-invalid="true"] {
+  border-color: var(--de-destructive);
+}
+
+/* Select — an ARIA listbox (Phase 9), not a native <select>. The trigger is a
+   button styled to match .de-input; the list reuses the menu surface. */
+.de-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--de-space-2);
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  padding: 0 var(--de-space-2) 0 var(--de-space-3);
+  border: 1px solid var(--de-input);
+  border-radius: var(--de-radius-sm);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+  font-family: inherit;
+  font-size: var(--de-text-base);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--de-duration-fast) var(--de-ease);
+}
+
+.de-select__trigger:hover:not(:disabled) {
+  border-color: var(--de-border-strong);
+}
+
+.de-select__trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.de-select__value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.de-select__chevron {
+  display: flex;
+  flex: none;
+  color: var(--de-muted-foreground);
+  transition: transform var(--de-duration-fast) var(--de-ease);
+  /* The trigger is now a button rather than a native control underneath, so the
+     chevron can sit in flow instead of floating over it — and no longer needs
+     pointer-events disabled to avoid a dead zone. */
+}
+
+.de-select__trigger[aria-expanded="true"] .de-select__chevron {
+  transform: rotate(180deg);
+}
+
+.de-select__list {
+  /* Sizing is applied by floating-ui's size middleware (min-width from the
+     trigger, max-height from the space available), so nothing is hard-coded
+     here that would fight it. */
+  min-width: 0;
+}
+
+.de-select__option {
+  justify-content: space-between;
+}
+
+.de-select__option-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.de-select__option--selected {
+  font-weight: 500;
+}
+
+.de-select__check {
+  display: inline-flex;
+  flex: none;
+  color: var(--de-accent);
+}
+
+.de-menu__group-label {
+  padding: var(--de-space-2) var(--de-space-2) var(--de-space-1);
+  color: var(--de-muted-foreground);
+  font-size: var(--de-text-sm);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Checkbox
+ * ------------------------------------------------------------------------ */
+
+.de-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--de-space-2);
+  position: relative;
+}
+
+/* The real input stays in the layout and keeps its own focus and hit target;
+   only its painting is replaced, so keyboard and screen-reader behaviour is
+   the browser's rather than ours. */
+.de-checkbox__input {
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.de-checkbox--sm .de-checkbox__input {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.de-checkbox__box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border: 1px solid var(--de-border-strong);
+  border-radius: var(--de-radius-sm);
+  background: var(--de-surface);
+  color: var(--de-primary-foreground);
+  transition:
+    background var(--de-duration-fast) var(--de-ease),
+    border-color var(--de-duration-fast) var(--de-ease);
+}
+
+.de-checkbox--sm .de-checkbox__box {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.de-checkbox__mark {
+  width: 0.75rem;
+  height: 0.75rem;
+  opacity: 0;
+}
+
+/* The check *draws* rather than pops: the path's dash offset sweeps from
+   hidden to full over one fast beat. Under reduced motion it simply appears. */
+.de-checkbox__mark path {
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  transition: stroke-dashoffset var(--de-duration) var(--de-ease);
+}
+
+.de-checkbox__input:checked ~ .de-checkbox__box .de-checkbox__mark path,
+.de-checkbox__input:indeterminate ~ .de-checkbox__box .de-checkbox__mark path {
+  stroke-dashoffset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .de-checkbox__mark path {
+    transition: none;
+  }
+}
+
+.de-checkbox__input:checked ~ .de-checkbox__box,
+.de-checkbox__input:indeterminate ~ .de-checkbox__box {
+  border-color: var(--de-primary);
+  background: var(--de-primary);
+}
+
+.de-checkbox__input:checked ~ .de-checkbox__box .de-checkbox__mark,
+.de-checkbox__input:indeterminate ~ .de-checkbox__box .de-checkbox__mark {
+  opacity: 1;
+}
+
+.de-checkbox__input:hover:not(:disabled) ~ .de-checkbox__box {
+  border-color: var(--de-primary);
+  /* A soft halo, so hover reads on a 16px target without the box changing
+     size or colour. */
+  box-shadow: 0 0 0 3px var(--de-accent-subtle);
+}
+
+.de-checkbox__input:focus-visible ~ .de-checkbox__box {
+  outline: 2px solid var(--de-ring);
+  outline-offset: 2px;
+}
+
+.de-checkbox--disabled {
+  opacity: 0.5;
+}
+
+.de-checkbox--disabled .de-checkbox__input {
+  cursor: not-allowed;
+}
+
+.de-checkbox__label {
+  cursor: pointer;
+  font-size: var(--de-text-base);
+}
+
+.de-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Toolbar surface
+ * ------------------------------------------------------------------------ */
+
+.de-toolbar-surface {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--de-space-1);
+  padding: var(--de-space-2);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+}
+
+.de-toolbar-surface--bordered {
+  border-bottom: 1px solid var(--de-border);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Tooltip
+ * ------------------------------------------------------------------------ */
+
+@keyframes de-tooltip-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.de-tooltip {
+  z-index: 60;
+  max-width: 18rem;
+  padding: var(--de-space-1) var(--de-space-2);
+  border-radius: var(--de-radius-sm);
+  /* Its own token pair, not a borrowed one. It used to reuse `--de-primary`,
+     which made retheming the primary button silently restyle every tooltip —
+     two unrelated decisions welded together. The pair is contrast-tested like
+     any other. */
+  background: var(--de-tooltip);
+  color: var(--de-tooltip-foreground);
+  font-size: var(--de-text-xs);
+  font-weight: 500;
+  line-height: var(--de-leading-tight);
+  box-shadow: var(--de-shadow);
+  pointer-events: none;
+  animation: de-tooltip-enter var(--de-duration-fast) var(--de-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .de-tooltip {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Popover
+ * ------------------------------------------------------------------------ */
+
+.de-popover {
+  z-index: 50;
+  min-width: 12rem;
+  max-width: min(24rem, calc(100vw - 2rem));
+  padding: var(--de-space-3);
+  border: 1px solid var(--de-border);
+  border-radius: var(--de-radius);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+  box-shadow: var(--de-shadow-lg);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Menu
+ * ------------------------------------------------------------------------ */
+
+.de-menu {
+  z-index: 50;
+  min-width: 11rem;
+  max-height: min(24rem, calc(100vh - 2rem));
+  overflow-y: auto;
+  padding: var(--de-space-1);
+  border: 1px solid var(--de-border);
+  border-radius: var(--de-radius);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+  box-shadow: var(--de-shadow-lg);
+}
+
+/* Menus enter with a short rise-and-fade; gone entirely under reduced motion.
+   120ms is below the threshold where an appearance reads as "animation" — it
+   just stops feeling abrupt. */
+@keyframes de-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.de-menu {
+  animation: de-menu-enter var(--de-duration-fast) var(--de-ease);
+  transform-origin: top center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .de-menu {
+    animation: none;
+  }
+}
+
+.de-menu__item {
+  transition: background var(--de-duration-fast) var(--de-ease);
+  display: flex;
+  align-items: center;
+  gap: var(--de-space-2);
+  width: 100%;
+  padding: var(--de-space-2) var(--de-space-2);
+  border: 0;
+  border-radius: var(--de-radius-sm);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--de-text-base);
+  text-align: left;
+  cursor: pointer;
+}
+
+.de-menu__item:hover:not([aria-disabled="true"]),
+.de-menu__item:focus-visible {
+  background: var(--de-accent-subtle);
+}
+
+.de-menu__item[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.de-menu__item--destructive {
+  color: var(--de-destructive);
+}
+
+.de-menu__icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--de-muted-foreground);
+}
+
+.de-menu__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.de-menu__shortcut {
+  flex: none;
+  color: var(--de-muted-foreground);
+  font-size: var(--de-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Dialog
+ * ------------------------------------------------------------------------ */
+
+.de-dialog__overlay {
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--de-space-4);
+  background: rgb(0 0 0 / 45%);
+}
+
+.de-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-3);
+  width: min(32rem, 100%);
+  max-height: calc(100vh - 4rem);
+  padding: var(--de-space-4);
+  border: 1px solid var(--de-border);
+  border-radius: var(--de-radius-lg);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+  box-shadow: var(--de-shadow-lg);
+}
+
+.de-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--de-space-3);
+}
+
+.de-dialog__title {
+  margin: 0;
+  font-size: var(--de-text-lg);
+  font-weight: 600;
+  line-height: var(--de-leading-tight);
+}
+
+.de-dialog__description {
+  margin: 0;
+  font-size: var(--de-text-sm);
+  color: var(--de-muted-foreground);
+}
+
+.de-dialog__body {
+  /* The body scrolls, not the dialog — so the header and footer stay put. */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.de-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--de-space-2);
+}
+
+@media (max-width: 480px) {
+  .de-dialog {
+    /* Full-width on a phone: a centred card with margins wastes the space
+       exactly where there is least of it. */
+    width: 100%;
+    max-height: calc(100dvh - 2rem);
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Editor toolbar
+ * ------------------------------------------------------------------------ */
+
+.de-editor-toolbar {
+  /* The row owns its own overflow, so the surface must not wrap. */
+  flex-wrap: nowrap;
+  padding: var(--de-space-2) var(--de-space-3);
+}
+
+.de-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--de-space-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.de-toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Overflow row
+ * ------------------------------------------------------------------------ */
+
+.de-overflow-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--de-space-1);
+  flex: 1;
+  min-width: 0;
+  /* Nothing wraps and nothing escapes: whatever does not fit goes to the menu. */
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.de-overflow-row__trigger {
+  /* Never the thing that gets pushed out. */
+  flex: none;
+  margin-left: auto;
+}
+
+.de-overflow-row__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-2);
+}
+
+.de-overflow-row__panel .de-toolbar__group {
+  flex-wrap: wrap;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Selects inside the toolbar
+ * ------------------------------------------------------------------------ */
+
+.de-block-select {
+  width: 8.5rem;
+}
+
+.de-font-select {
+  width: 9rem;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Colour pickers
+ * ------------------------------------------------------------------------ */
+
+.de-color {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--de-radius-sm);
+  cursor: pointer;
+}
+
+.de-color:hover {
+  background: var(--de-accent-subtle);
+}
+
+.de-color__swatch {
+  width: 1.125rem;
+  height: 1.125rem;
+  border: 1px solid var(--de-border-strong);
+  border-radius: 3px;
+}
+
+/* The native colour input is the control; the swatch is what is seen. Kept
+   focusable and hit-testable rather than `display: none`, which would make the
+   picker unreachable by keyboard. */
+.de-color input[type="color"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.de-color:focus-within {
+  outline: var(--de-ring-width) solid var(--de-ring);
+  outline-offset: var(--de-ring-offset);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Floating toolbar and menus
+ * ------------------------------------------------------------------------ */
+
+.de-floating-toolbar {
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--de-space-1);
+  border: 1px solid var(--de-border);
+  border-radius: var(--de-radius);
+  background: var(--de-surface);
+  box-shadow: var(--de-shadow-lg);
+}
+
+.de-slash-menu {
+  min-width: 14rem;
+}
+
+.de-menu__item--active {
+  background: var(--de-accent-subtle);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Find and replace
+ * ------------------------------------------------------------------------ */
+
+.de-find-replace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-3);
+  padding: var(--de-space-3);
+}
+
+.de-find-replace__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--de-space-2);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Status bar
+ * ------------------------------------------------------------------------ */
+
+.de-status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--de-space-4);
+  padding: var(--de-space-2) var(--de-space-3);
+  border-top: 1px solid var(--de-border);
+  background: var(--de-surface);
+  color: var(--de-muted-foreground);
+  font-size: var(--de-text-xs);
+}
+
+.de-status-bar__stat {
+  font-variant-numeric: tabular-nums;
+}
+
+.de-status-bar__spacer {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Outline and table of contents
+ * ------------------------------------------------------------------------ */
+
+.de-outline,
+.de-toc {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--de-space-2);
+  overflow-y: auto;
+}
+
+.de-outline__item,
+.de-toc__item {
+  display: block;
+  width: 100%;
+  padding: var(--de-space-1) var(--de-space-2);
+  border: 0;
+  border-radius: var(--de-radius-sm);
+  background: transparent;
+  color: var(--de-foreground);
+  font-family: inherit;
+  font-size: var(--de-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.de-outline__item:hover,
+.de-toc__item:hover {
+  background: var(--de-accent-subtle);
+}
+
+.de-toc__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Page and canvas
+ * ------------------------------------------------------------------------ */
+
+.de-canvas {
+  /* The desk the page sits on. */
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--de-space-6) var(--de-space-4);
+  background: var(--de-canvas);
+  /* Centres the sheet. In paginated mode the page stack is a fixed-width block
+     with no margin of its own, so without this the document sits against the
+     left edge of the desk rather than on it. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.de-page {
+  margin: 0 auto;
+  background: var(--de-page);
+  color: var(--de-page-foreground);
+  /* A hairline as well as a shadow: on a light canvas the shadow alone is too
+     subtle to read as a sheet edge, and the page dissolves into the desk. */
+  border: 1px solid var(--de-border);
+  box-shadow: var(--de-page-shadow);
+  border-radius: 2px;
+}
+
+.de-page__header,
+.de-page__footer {
+  color: var(--de-muted-foreground);
+  font-size: var(--de-text-xs);
+}
+
+.de-page-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-3);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Zoom
+ * ------------------------------------------------------------------------ */
+
+.de-zoom {
+  display: flex;
+  align-items: center;
+  gap: var(--de-space-1);
+}
+
+.de-zoom__label {
+  min-width: 3.25rem;
+  height: 1.75rem;
+  padding: 0 var(--de-space-2);
+  font-size: var(--de-text-xs);
+  /* Tabular figures, so the readout does not jog sideways stepping 90% → 100%. */
+  font-variant-numeric: tabular-nums;
+  color: var(--de-muted-foreground);
+}
+
+.de-zoom__label:hover:not(:disabled) {
+  /* Full-strength text on hover: the readout is muted at rest because it is a
+     status first, but it resets the zoom when clicked and has to look like it
+     will do something. */
+  color: var(--de-foreground);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Media controls
+ * ------------------------------------------------------------------------ */
+
+.de-media-alt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-2);
+}
+
+.de-a11y-badge {
+  font-size: var(--de-text-xs);
+  color: var(--de-muted-foreground);
+}
+
+.de-a11y-badge:not([data-a11y-issues="0"]) {
+  color: var(--de-warning);
+  font-weight: 500;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Media node views
+ *
+ * These style the elements `useMediaNodeViews` creates. Without them the
+ * wrapper has no dimensions of its own, so an image that fails to decode
+ * collapses to nothing and cannot be clicked or selected.
+ * ------------------------------------------------------------------------ */
+
+.docs-editor-media {
+  position: relative;
+  display: block;
+  width: fit-content;
+  /* A floor, so media awaiting an upload — or one that fails to load — is still
+     a target the user can select. */
+  min-width: 48px;
+  min-height: 24px;
+  margin: var(--de-space-3) 0;
+}
+
+.docs-editor-media > img,
+.docs-editor-media > video,
+.docs-editor-media > iframe {
+  /* Block, so an explicit width applies. A failed image is an *inline
+     non-replaced* box in Chrome, and `width` does not apply to those — so an
+     inline image that 404s silently ignores its own size. */
+  display: block;
+  max-width: 100%;
+}
+
+.docs-editor-media[data-align="left"] {
+  margin-right: auto;
+}
+
+.docs-editor-media[data-align="center"] {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.docs-editor-media[data-align="right"] {
+  margin-left: auto;
+}
+
+.docs-editor-media[data-align="wide"],
+.docs-editor-media[data-align="full"] {
+  width: 100%;
+}
+
+.docs-editor-media:focus-visible,
+.docs-editor-media-selected {
+  outline: var(--de-ring-width) solid var(--de-ring);
+  outline-offset: var(--de-ring-offset);
+}
+
+/* Awaiting an upload — a placeholder, not a load failure. */
+.docs-editor-media[data-media-pending] {
+  min-width: 160px;
+  min-height: 90px;
+  border: 1px dashed var(--de-border-strong);
+  border-radius: var(--de-radius-sm);
+  background: var(--de-muted);
+}
+
+.docs-editor-media-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--de-surface);
+  border-radius: 2px;
+  background: var(--de-accent);
+  opacity: 0;
+}
+
+.docs-editor-media:hover .docs-editor-media-handle,
+.docs-editor-media-selected .docs-editor-media-handle {
+  opacity: 1;
+}
+
+.docs-editor-media-handle[data-handle="nw"] {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+.docs-editor-media-handle[data-handle="ne"] {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+.docs-editor-media-handle[data-handle="sw"] {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+.docs-editor-media-handle[data-handle="se"] {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Page setup
+ *
+ * `PageSetupControls` exposes a single theme slot for its wrapper, so its
+ * inner controls are reached by descendant selector rather than by class. That
+ * is deliberate rather than lazy: adding a slot per control would grow the
+ * headless component's API for the benefit of exactly one stylesheet.
+ * ------------------------------------------------------------------------ */
+
+.de-page-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-2);
+  padding: var(--de-space-3);
+  border-bottom: 1px solid var(--de-border);
+  font-size: var(--de-text-sm);
+}
+
+.de-page-setup label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--de-space-2);
+  color: var(--de-foreground);
+}
+
+.de-page-setup select {
+  flex: 0 1 8rem;
+  min-width: 0;
+  height: 1.75rem;
+  padding: 0 var(--de-space-2);
+  border: 1px solid var(--de-input);
+  border-radius: var(--de-radius-sm);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+  font-family: inherit;
+  font-size: var(--de-text-sm);
+}
+
+.de-page-setup select:hover {
+  border-color: var(--de-border-strong);
+}
+
+/* A checkbox belongs beside its label, not across the panel from it — the
+   space-between layout above is for a label/select pair. */
+.de-page-setup label:has(input[type="checkbox"]) {
+  justify-content: flex-start;
+}
+
+.de-page-setup input[type="checkbox"] {
+  /* Sized up from the browser default, which is smaller than the 24px minimum
+     touch target and awkward to hit. */
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--de-accent);
+}
+
+/* A section heading for each sidebar panel, so the outline, page setup and
+   find-and-replace read as three things rather than one long column. */
+.de-outline {
+  border-bottom: 1px solid var(--de-border);
+}
+
+.de-find-replace {
+  border-top: 1px solid var(--de-border);
+}
+
+/* ------------------------------------------------------------------------ *
+ * Find bar
+ *
+ * Floats in the corner of the document rather than occupying a panel: search is
+ * a transient task, and a permanent panel steals width from the text for the
+ * time nobody is searching.
+ * ------------------------------------------------------------------------ */
+
+.de-find-bar {
+  position: absolute;
+  top: var(--de-space-3);
+  right: var(--de-space-3);
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-2);
+  padding: var(--de-space-2);
+  border: 1px solid var(--de-border);
+  border-radius: var(--de-radius);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+  box-shadow: var(--de-shadow-lg);
+}
+
+.de-find-bar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--de-space-1);
+}
+
+.de-find-bar__input {
+  width: 14rem;
+}
+
+.de-find-bar__status {
+  min-width: 4.5rem;
+  padding: 0 var(--de-space-1);
+  color: var(--de-muted-foreground);
+  font-size: var(--de-text-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .de-find-bar {
+    /* Span the width rather than overhang the edge on a phone. */
+    left: var(--de-space-3);
+    right: var(--de-space-3);
+  }
+
+  .de-find-bar__input {
+    width: auto;
+    flex: 1;
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Font size stepper (Phase 9)
+ * ------------------------------------------------------------------------ */
+
+.de-font-size__value {
+  display: inline-flex;
+  align-items: center;
+  height: 1.75rem;
+  border: 1px solid var(--de-input);
+  border-radius: var(--de-radius-sm);
+  background: var(--de-surface);
+  color: var(--de-surface-foreground);
+}
+
+.de-font-size__value:hover {
+  border-color: var(--de-border-strong);
+}
+
+.de-font-size__input {
+  /* Wide enough for three digits — a size ladder tops out at 72 and the field
+     accepts up to 400, so four would leave a permanent gap. */
+  width: 2.25rem;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--de-text-base);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.de-font-size__input:focus {
+  outline: none;
+}
+
+.de-font-size__value:focus-within {
+  outline: 2px solid var(--de-ring);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Link editor (Phase 9)
+ * ------------------------------------------------------------------------ */
+
+.de-link-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--de-space-3);
+  min-width: 18rem;
+}
+
+/* ------------------------------------------------------------------------ *
+ * Block drag handle and drop indicator (Phase 9)
+ * ------------------------------------------------------------------------ */
+
+.de-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  /* Sits in the margin to the left of the block, so it never overlaps text. */
+  margin-left: -1.5rem;
+  border-radius: var(--de-radius-sm);
+  color: var(--de-muted-foreground);
+  /* No `opacity: 0` here. `BlockDragLayer` already mounts the handle *only*
+     while the pointer is over a block, so a CSS visibility rule on top of that
+     is a second mechanism for the same thing — and the two disagreed: the
+     element existed, and the stylesheet kept it invisible because its hover
+     selector matched a different ancestor than the one the layer renders into.
+     One mechanism, in the component. */
+  transition: background var(--de-duration-fast) var(--de-ease);
+}
+
+.de-drag-handle:hover {
+  background: var(--de-accent-subtle);
+  color: var(--de-accent-subtle-foreground);
+}
+
+.de-drag-handle:active {
+  cursor: grabbing;
+}
+
+.de-drop-indicator {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--de-accent);
+  /* Never intercepts the drag it is describing. */
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .de-drag-handle {
+    transition: none;
+  }
+}
+
+/* ------------------------------------------------------------------------ *
+ * Upload button and file-drop target (Phase 9.10 — moved from the playground)
+ * ------------------------------------------------------------------------ */
+
+/* An icon button in everything but element type — it has to be a `<label>` so
+   that clicking it opens the file picker. */
+.de-upload-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--de-radius-sm);
+  cursor: pointer;
+}
+
+.de-upload-button:hover {
+  background: var(--de-accent-subtle);
+  color: var(--de-accent-subtle-foreground);
+}
+
+/* The input is visually hidden behind the icon. Clipped rather than
+   `display: none` — the latter removes it from the tab order, which would make
+   uploading mouse-only. */
+.de-upload-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Focus lives on the hidden input, so the visible label has to show it. */
+.de-upload-button:focus-within {
+  outline: 2px solid var(--de-ring);
+  outline-offset: 2px;
+}
+
+/* Files being dragged over the page. A ring rather than a colour wash, so the
+   document stays readable while the target is unmistakable. */
+.de-file-drop-target {
+  outline: 2px dashed var(--de-accent);
+  outline-offset: -4px;
+}

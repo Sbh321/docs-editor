@@ -89,3 +89,50 @@ describe("HtmlImporter", () => {
     expect(back.content[1]?.content[0]?.marks[0]?.type).toBe("bold");
   });
 });
+
+describe("HtmlImporter data: URL policy", () => {
+  // `data:` used to be refused outright. It is now allowed only where a browser
+  // *loads* the resource (src/poster) and the payload is media — the case that
+  // matters for inline images in exported HTML. Navigable attributes still
+  // refuse it, because `data:image/svg+xml` in an href renders as a document,
+  // where script does run.
+  const parseSpec: HtmlParseSpec<FixtureNodeName, FixtureMarkName> = {
+    nodes: [
+      { tag: "p", node: "paragraph" },
+      {
+        tag: "img",
+        node: "image",
+        getAttrs: (el) => ({
+          src: el.getAttribute("src") ?? "",
+          alt: el.getAttribute("alt") ?? "",
+        }),
+      },
+    ],
+    marks: [
+      { tag: "a", mark: "link", getAttrs: (el) => ({ href: el.getAttribute("href") ?? "" }) },
+    ],
+  };
+  const mediaImporter = new HtmlImporter<FixtureNodeName, FixtureMarkName>({ schema, parseSpec });
+
+  it("keeps an inline image data: URL in src", () => {
+    const doc = mediaImporter.parse('<img src="data:image/png;base64,iVBORw0KGgo=" alt="Inline">');
+    expect(JSON.stringify(doc)).toContain("data:image/png");
+  });
+
+  it("strips a non-media data: URL from src", () => {
+    const doc = mediaImporter.parse('<img src="data:text/html;base64,PHNjcmlwdD4=" alt="x">');
+    expect(JSON.stringify(doc)).not.toContain("data:text/html");
+  });
+
+  it("strips a data: URL from a navigable href, even for media", () => {
+    const doc = mediaImporter.parse('<p><a href="data:image/svg+xml,<svg/>">click</a></p>');
+    expect(JSON.stringify(doc)).not.toContain("data:image/svg");
+  });
+
+  it("still strips javascript: everywhere", () => {
+    const doc = mediaImporter.parse(
+      '<img src="javascript:alert(1)"><p><a href="javascript:x">y</a></p>',
+    );
+    expect(JSON.stringify(doc)).not.toContain("javascript:");
+  });
+});

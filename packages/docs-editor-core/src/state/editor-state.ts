@@ -17,6 +17,8 @@ import {
   engineTransactionScrollIntoView,
   engineTransactionSelectNode,
   engineTransactionSelection,
+  engineTransactionSetNodeAttrs,
+  engineTransactionSetNodeType,
   engineTransactionSetSelection,
 } from "../engine";
 import { selectionFrom, selectionTo } from "../selection";
@@ -113,9 +115,49 @@ export class Transaction<NodeName extends string = string, MarkName extends stri
     return this;
   }
 
-  /** Removes marks of type `markType` from the inline content between `from` and `to`. */
-  removeMark(from: number, to: number, markType: MarkName): this {
+  /**
+   * Removes marks of type `markType` from the inline content between `from` and
+   * `to`, or **every** mark when `markType` is `null`.
+   *
+   * The `null` form is what lets "clear formatting" be one transaction rather
+   * than two: clearing marks and resetting block attributes are separate edits,
+   * and dispatching them separately would cost the user two presses of undo to
+   * get back to where they started.
+   */
+  removeMark(from: number, to: number, markType: MarkName | null): this {
     engineTransactionRemoveMark(this.engine, from, to, markType);
+    return this;
+  }
+
+  /**
+   * Replaces the attributes of the node at `pos`, leaving its type and content
+   * untouched — how a node's own properties change in place (resizing or
+   * aligning an image, re-levelling a heading) without rebuilding it and losing
+   * its children.
+   *
+   * `attrs` must already be validated, the same contract as
+   * {@link Transaction.insertNode}: a `Transaction` has no schema to validate
+   * against. Build them with `Schema.blockType(type, attrs)`, which is what the
+   * media commands in `../media` do.
+   */
+  setNodeAttrs(pos: number, attrs: Record<string, unknown>): this {
+    engineTransactionSetNodeAttrs(this.engine, pos, attrs);
+    return this;
+  }
+
+  /**
+   * Replaces the *type* and attributes of the node at `pos`, keeping its
+   * content — how a bullet list becomes a numbered one, or a plain list item a
+   * task item, without its children being removed and rebuilt (which would
+   * destroy any selection inside them).
+   *
+   * `attrs` must already be validated, the same contract as
+   * {@link Transaction.setNodeAttrs}. Build them with `Schema.blockType(type,
+   * attrs)` against the **target** type, so attributes the new type does not
+   * declare cannot come along.
+   */
+  setNodeType(pos: number, type: NodeName, attrs: Record<string, unknown>): this {
+    engineTransactionSetNodeType(this.engine, pos, type, attrs);
     return this;
   }
 

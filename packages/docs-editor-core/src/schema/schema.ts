@@ -1,4 +1,4 @@
-import { matchesContentExpression, parseContentExpression } from "./content-expression";
+import { matchesContentExpression, nodeGroups, parseContentExpression } from "./content-expression";
 import {
   InvalidAttributeError,
   InvalidContentError,
@@ -46,8 +46,7 @@ export class Schema<NodeName extends string = string, MarkName extends string = 
 
     const groups = new Set<string>();
     for (const name of nodeNames) {
-      const group = spec.nodes[name].group;
-      if (group) {
+      for (const group of nodeGroups(spec.nodes[name].group)) {
         groups.add(group);
       }
     }

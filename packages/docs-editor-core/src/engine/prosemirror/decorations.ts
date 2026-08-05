@@ -10,12 +10,13 @@ export type EngineDecorationSet = DecorationSet;
  * Builds a `prosemirror-view` `DecorationSet` from docs-editor's plain
  * {@link Decoration}s, against `doc`.
  *
- * Positions are clamped to the document's bounds and zero-width entries are
- * dropped, so a set built from positions that belong to a slightly different
- * document (a stale frame between a doc edit and the consumer recomputing its
- * decorations) is rendered harmlessly rather than throwing — the next
- * recompute corrects it. This is what lets decorations be recomputed on every
- * change instead of position-mapped through transactions.
+ * Positions are clamped to the document's bounds, zero-width entries are
+ * dropped, and a node decoration whose range has drifted off a node boundary
+ * snaps to the enclosing top-level block rather than disappearing. Together
+ * these make a set built from positions belonging to a slightly different
+ * document (the stale frame between a doc edit and the consumer recomputing)
+ * render *stably* rather than flicker — which is what lets decorations be
+ * recomputed on every change instead of position-mapped through transactions.
  */
 export function buildEngineDecorationSet(
   doc: ProseMirrorNode,
@@ -30,10 +31,30 @@ export function buildEngineDecorationSet(
       continue;
     }
     if (decoration.type === "node") {
-      // Node decorations attribute the block's own DOM element (e.g. a margin
+      // Node decorations attribute the block's own DOM element (e.g. spacing
       // to push it onto the next page). `nodeName` is an inline-only concept.
       const { nodeName: _nodeName, ...attributes } = decoration.attributes;
-      engineDecorations.push(ProseMirrorDecoration.node(from, to, { ...attributes }));
+
+      // The engine silently drops a node decoration whose range does not
+      // *exactly* span a node — and between a keystroke and the consumer
+      // recomputing, every stored position after the edit is off by the length
+      // of what was typed. For pagination that meant page-break spacing
+      // vanishing for a frame or two on each keystroke and reappearing after
+      // the re-measure: the page visibly snapped. When the range has drifted,
+      // snap it to the top-level block containing `from` instead — the next
+      // recompute lands on the same block, so nothing moves twice.
+      let nodeFrom = from;
+      let nodeTo = to;
+      const exact = doc.nodeAt(from);
+      if (!exact || from + exact.nodeSize !== to) {
+        const $from = doc.resolve(Math.min(from + 1, max));
+        if ($from.depth < 1) {
+          continue; // No enclosing block to attach to; drop harmlessly.
+        }
+        nodeFrom = $from.before(1);
+        nodeTo = $from.after(1);
+      }
+      engineDecorations.push(ProseMirrorDecoration.node(nodeFrom, nodeTo, { ...attributes }));
     } else {
       engineDecorations.push(ProseMirrorDecoration.inline(from, to, { ...decoration.attributes }));
     }

@@ -7,7 +7,7 @@
 # Status
 
 - Version: 0.1.0 (Draft)
-- Project Status: Phase 0 (Project Foundation) complete — see [ROADMAP.md](./ROADMAP.md)
+- Project Status: Phases 0–8 complete — see [ROADMAP.md](./ROADMAP.md)
 - Repository Owner: Sbh321
 - Primary Language: TypeScript
 - Package Manager: pnpm
@@ -153,9 +153,18 @@ Secondary audience:
 
 ## Headless First
 
-The editor should never force styling.
+The editor should never *force* styling. Consumers must always be able to
+control the appearance completely.
 
-Consumers should fully control the appearance.
+Since Phase 8 that is a statement about **layers**, not about the absence of a
+default. A styled, batteries-included layer ships on top, so the common case is
+one import rather than a thousand lines of assembly — but it is a separate
+package that a consumer chooses. The layer beneath it remains genuinely
+headless: it renders no styles, ships no CSS, and imposes no design system.
+
+The test of whether this holds is not intent but bytes. **Nobody pays for a
+layer they do not import**, enforced by bundle-size budgets in CI rather than
+asserted in prose.
 
 ---
 
@@ -240,7 +249,7 @@ The editor should support creation of professional documents including:
 - Headings
 - Lists
 - Tables
-- Images
+- Media (images, video, audio, file attachments, embeds)
 - Code blocks
 - Quotes
 - Page breaks
@@ -257,46 +266,63 @@ The editor should support creation of professional documents including:
 
 # Editing Capabilities
 
-The editor should eventually support:
+The editor should eventually support the following. Items marked ✅ ship today;
+the rest remain planned.
 
 ## Text Formatting
 
-- Bold
-- Italic
-- Underline
-- Strike
-- Highlight
-- Inline Code
+- Bold ✅
+- Italic ✅
+- Underline ✅
+- Strike ✅
+- Highlight ✅
+- Inline Code ✅
 - Superscript
 - Subscript
-- Font Color
-- Background Color
-- Remove Formatting
+- Font Color ✅
+- Background Color ✅
+- Font Family ✅
+- Font Size ✅ — stored in **points**, not pixels: page layout is already in
+  physical units, DOCX stores half-points so the round-trip is exact, and the
+  number shown matches what Word and Google Docs show for the same document
+- Remove Formatting ✅ — `clearFormatting` clears marks *and* paragraph
+  formatting in one transaction, so one press of undo restores everything
 
 ## Paragraph Formatting
 
-- Alignment
+- Alignment ✅
+- Indentation ✅ — one pair of commands, list-aware: inside a list they nest
+  and unnest the item, elsewhere they change a block attribute. An indent
+  *attribute* on a list item would render as indented while remaining a
+  structural sibling, which every exporter would then disagree with
 - Line Height
-- Indentation
 - Spacing
 - Direction
 - Paragraph Styles
 
 ## Document Structure
 
-- Headings (H1-H6)
-- Paragraphs
-- Block Quotes
-- Horizontal Rules
+- Headings (H1-H6) ✅
+- Paragraphs ✅
+- Block Quotes ✅
+- Horizontal Rules ✅
 - Page Breaks
+- Block reordering ✅ — by drag handle **and** by keyboard
+  (`Alt+Shift+Up/Down`); a drag-only affordance would be an accessibility
+  regression
 
 ## Lists
 
-- Bullet Lists
-- Numbered Lists
-- Nested Lists
-- Task Lists
-- Checklist
+- Bullet Lists ✅
+- Numbered Lists ✅
+- Nested Lists ✅
+- Task Lists / Checklists ✅ — their own `task_list` / `task_item` node types
+  rather than a flag on `list_item`: a checklist serializes differently in
+  every format, and `checked: null` on every ordinary bullet would be noise
+  each exporter has to step around
+- List marker styles ✅ — disc/circle/square, decimal/alpha/roman
+- List conversion ✅ — `toggleList` changes a list's type *in place*, so
+  nesting and the cursor survive
 
 ## Tables
 
@@ -307,7 +333,10 @@ The editor should eventually support:
 - Header Rows
 - Keyboard Navigation
 
-## Images
+## Media
+
+Images, video, audio, file attachments and generic embeds are provided by the
+core on a shared media foundation (see ROADMAP Phase 7 — Media):
 
 - Upload
 - Paste
@@ -317,11 +346,32 @@ The editor should eventually support:
 - Caption
 - Alt Text
 
+Uploading itself is an application responsibility. The editor defines the
+upload contract and drives its lifecycle — progress, cancellation, retry — but
+never performs a network request or touches storage. Resolving a third-party
+URL into a rich embed (oEmbed providers) is likewise out of scope for the core;
+the generic `embed` node is the extension point.
+
+Media accessibility is a requirement rather than a feature. Every gesture has a
+keyboard equivalent — resizing and alignment are commands first and pointer
+interactions second — media nodes are focusable and announce what they are, and
+a decorative image is marked as a deliberate decision rather than inferred from
+a blank alt field. The core reports a document's media accessibility problems
+as data, so an application can gate on them.
+
 ## Links
 
-- Hyperlinks
-- Internal Links
-- Anchor Links
+- Hyperlinks ✅ — with an editor that reads back the link under the cursor,
+  URL normalization (a bare `example.com` becomes `https://`), an optional
+  title, and open-in-new-tab
+- Internal Links ✅ — a rooted path or an anchor is kept exactly as typed
+- Anchor Links ✅
+
+A link's `href` is checked on the way **in and out**. Validating only on input
+would be insufficient: a document can acquire an unsafe URL from an import, a
+paste, or programmatic construction, so the renderer sanitizes as well. `rel="noopener noreferrer"`
+is *derived* for `target="_blank"` rather than stored, which means an imported
+link that omitted it is fixed rather than faithfully reproduced.
 
 ## Code
 
@@ -373,11 +423,40 @@ Future formats may include:
 
 # Package Ecosystem
 
-Initial packages:
+Shipped packages:
 
-- @sbh321/docs-editor-core
+- @sbh321/docs-editor-core — the framework-agnostic engine, plus two optional
+  entry points: `/preset` (a complete default schema with its renderers, parse
+  rules and keymap) and `/tables` (interactive table editing)
 - @sbh321/docs-editor-react — React adapter and headless UI components
+- @sbh321/docs-editor — the batteries-included layer: styled components and
+  `<DocsEditor />` (Phase 8)
 - @sbh321/docs-editor-icons — optional default icon set (Phase 4)
+- @sbh321/docs-editor-markdown — Markdown import/export (Phase 5)
+- @sbh321/docs-editor-docx — DOCX import/export (Phase 5.7)
+
+## Headless *and* batteries-included
+
+These are usually presented as opposites, and the resolution is that they are
+different **layers**, not different products. A consumer picks one and can drop
+to the next whenever it stops fitting:
+
+| Need | Layer |
+| --- | --- |
+| A working editor | `<DocsEditor />` |
+| Our chrome, their layout | `EditorShell` plus the styled surfaces |
+| Their own design system | the headless React primitives |
+| No framework | the core engine |
+
+The rule that keeps this honest: **nobody pays for a layer they do not import**.
+An application using the primitives with its own design system downloads none of
+the styled UI, none of the default schema and no icons. That is enforced by
+bundle-size budgets in CI rather than asserted in prose (see
+docs/PERFORMANCE.md).
+
+Opinions live in the top layer. *Behaviour* does not: every control there
+delegates to a core command, so the batteries change how an editor looks and
+never what it does.
 
 Planned packages:
 
@@ -434,8 +513,6 @@ Examples:
 - Citations
 - References
 - Timeline
-- Video
-- Audio
 - Diagram
 - Emoji
 - Mentions

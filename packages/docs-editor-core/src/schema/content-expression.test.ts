@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchesContentExpression, parseContentExpression } from "./content-expression";
+import { matchesContentExpression, nodeGroups, parseContentExpression } from "./content-expression";
 import { InvalidContentExpressionError } from "./errors";
 
 import type { ContentDescriptor } from "./content-expression";
@@ -90,5 +90,26 @@ describe("matchesContentExpression", () => {
         descriptor("image"),
       ]),
     ).toBe(false);
+  });
+});
+
+describe("multi-group nodes", () => {
+  it("splits a whitespace-separated group list", () => {
+    expect(nodeGroups("block media")).toEqual(["block", "media"]);
+    expect(nodeGroups("block")).toEqual(["block"]);
+    expect(nodeGroups("  block   media  ")).toEqual(["block", "media"]);
+    expect(nodeGroups(undefined)).toEqual([]);
+    expect(nodeGroups("")).toEqual([]);
+  });
+
+  it("matches a node by any of its groups", () => {
+    // A node declaring `group: "block media"` must satisfy a content expression
+    // referring to either group. Treating the field as a single opaque name
+    // silently matched neither, which is what the media node specs hit.
+    const image = descriptor("image", "block media");
+
+    expect(matchesContentExpression(parseContentExpression("doc", "block+"), [image])).toBe(true);
+    expect(matchesContentExpression(parseContentExpression("figure", "media"), [image])).toBe(true);
+    expect(matchesContentExpression(parseContentExpression("doc", "inline+"), [image])).toBe(false);
   });
 });

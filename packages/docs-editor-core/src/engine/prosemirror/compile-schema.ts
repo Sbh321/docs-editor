@@ -92,6 +92,9 @@ function compileNodeSpec<NodeName extends string>(
   if (nodeSpec.isolating !== undefined) {
     compiled.isolating = nodeSpec.isolating;
   }
+  if (nodeSpec.draggable !== undefined) {
+    compiled.draggable = nodeSpec.draggable;
+  }
   if (!nodeSpec.isText) {
     compiled.toDOM = () => defaultToDOM(name, nodeSpec.content !== undefined);
   }

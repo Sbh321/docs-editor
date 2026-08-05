@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { loadMarkdownDocument } from "./load-document";
+
 /**
  * CPU profile of typing on a large document (ROADMAP Phase 6, Milestone 6.3).
  *
@@ -53,12 +55,11 @@ test("CPU profile — typing on a large document", async ({ page }) => {
     (_, index) =>
       `Paragraph ${index + 1} of the benchmark document with enough words to fill a line of the page.`,
   ).join("\n\n");
-  await page.getByLabel("Serialization format").selectOption("markdown");
-  await page.getByLabel("Serialized document").fill(markdown);
-  await page.getByRole("button", { name: "Import", exact: true }).click();
+  await loadMarkdownDocument(page, markdown);
+  // Let pagination measure and converge before measuring anything else.
   await page.waitForTimeout(2000);
 
-  const editable = page.locator(".playground-editor [contenteditable='true']");
+  const editable = page.locator(".de-editor [contenteditable='true']");
   await editable.click();
   await page.waitForTimeout(200);
   await page.keyboard.type("warmup", { delay: 0 });
