@@ -41,6 +41,7 @@ export const editorThemeClassNames: Readonly<Record<string, string>> = {
   blockDropIndicator: "de-drop-indicator",
 
   pageCanvas: "de-canvas",
+  pageViewport: "de-page-viewport",
   page: "de-page",
   pageContent: "de-page-content",
   pageHeader: "de-page__header",

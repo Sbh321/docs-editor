@@ -109,7 +109,12 @@ export const ELEVATION_TOKENS = [
 export const FOCUS_TOKENS = ["--de-ring-width", "--de-ring-offset"] as const;
 
 /** Layout metrics the shell reads. */
-export const LAYOUT_TOKENS = ["--de-toolbar-height", "--de-sidebar-width"] as const;
+export const LAYOUT_TOKENS = [
+  "--de-toolbar-height",
+  "--de-sidebar-width",
+  "--de-canvas-padding-block",
+  "--de-canvas-padding-inline",
+] as const;
 
 /** Motion. Short by default: waiting for a menu is worse than a menu that appears. */
 export const MOTION_TOKENS = ["--de-duration-fast", "--de-duration", "--de-ease"] as const;

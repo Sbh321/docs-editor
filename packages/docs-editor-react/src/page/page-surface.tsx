@@ -59,6 +59,7 @@ export function PageSurface(props: PageSurfaceProps): ReactNode {
   const { pageCount } = usePagination(props.paginate ?? false);
 
   const canvasClassName = useThemeClassName("pageCanvas");
+  const viewportClassName = useThemeClassName("pageViewport");
   const pageClassName = useThemeClassName("page");
   const contentClassName = useThemeClassName("pageContent");
   const headerClassName = useThemeClassName("pageHeader");
@@ -116,6 +117,29 @@ export function PageSurface(props: PageSurfaceProps): ReactNode {
     };
   }, []);
 
+  /**
+   * Keeps the sheet inside the desk (ROADMAP Phase 9.5, Milestone 9.5.5).
+   *
+   * A sheet is a fixed width — that is what makes it a sheet — so on a canvas
+   * narrower than the paper something has to give. The two honest options are
+   * to let the sheet hang outside the canvas and scroll the canvas, or to clamp
+   * a *scrollport* to the canvas and scroll the sheet inside it. This is the
+   * second: the page never extends past the canvas or its gutter, and the
+   * overflow is scrolled within the page's own footprint.
+   *
+   * The sheet keeps its true width regardless — it is the scrollport that
+   * clamps. Reflowing the page to the window would change where every line
+   * breaks, and the document on screen would stop being the document that
+   * prints.
+   */
+  const viewportStyle: CSSProperties = {
+    width: toCssLength(dimensions.width, dimensions.unit),
+    // Never wider than the canvas' content box, which is what "never goes
+    // beyond the canvas or its padding" means in CSS.
+    maxWidth: "100%",
+    overflowX: "auto",
+  };
+
   const { margins } = layout;
   const topInset = toCssLength(margins.top, margins.unit);
   const bottomInset = toCssLength(margins.bottom, margins.unit);
@@ -154,20 +178,22 @@ export function PageSurface(props: PageSurfaceProps): ReactNode {
   if (!props.paginate) {
     return (
       <div ref={canvasRef} className={cx(canvasClassName, props.className)} style={props.style}>
-        <div
-          className={cx(pageClassName, contentClassName)}
-          style={{
-            width: toCssLength(dimensions.width, dimensions.unit),
-            minHeight: toCssLength(dimensions.height, dimensions.unit),
-            padding: marginsToCss(margins),
-            position: "relative",
-            boxSizing: "border-box",
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          {renderHeaderFooter(1)}
-          {props.children}
+        <div className={viewportClassName} style={viewportStyle}>
+          <div
+            className={cx(pageClassName, contentClassName)}
+            style={{
+              width: toCssLength(dimensions.width, dimensions.unit),
+              minHeight: toCssLength(dimensions.height, dimensions.unit),
+              padding: marginsToCss(margins),
+              position: "relative",
+              boxSizing: "border-box",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            {renderHeaderFooter(1)}
+            {props.children}
+          </div>
         </div>
       </div>
     );
@@ -186,40 +212,42 @@ export function PageSurface(props: PageSurfaceProps): ReactNode {
 
   return (
     <div ref={canvasRef} className={cx(canvasClassName, props.className)} style={props.style}>
-      <div style={{ position: "relative", width: pageWidthPx, height: stackHeightPx }}>
-        {Array.from({ length: pageCount }, (_, index) => (
+      <div className={viewportClassName} style={viewportStyle}>
+        <div style={{ position: "relative", width: pageWidthPx, height: stackHeightPx }}>
+          {Array.from({ length: pageCount }, (_, index) => (
+            <div
+              key={index}
+              className={pageClassName}
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: index * (pageHeightPx + PAGE_GAP_PX),
+                left: 0,
+                width: pageWidthPx,
+                height: pageHeightPx,
+                boxSizing: "border-box",
+              }}
+            >
+              {renderHeaderFooter(index + 1)}
+            </div>
+          ))}
           <div
-            key={index}
-            className={pageClassName}
-            aria-hidden="true"
+            className={contentClassName}
             style={{
               position: "absolute",
-              top: index * (pageHeightPx + PAGE_GAP_PX),
-              left: 0,
-              width: pageWidthPx,
-              height: pageHeightPx,
-              boxSizing: "border-box",
+              top: topPx,
+              left: leftPx,
+              width: pageWidthPx - leftPx - rightPx,
+              // Fill at least the first page's content area so a click anywhere
+              // on the page places the caret (the editor stretches via flex).
+              minHeight: pageContentPx,
+              display: "flex",
+              flexDirection: "column",
+              zIndex: 1,
             }}
           >
-            {renderHeaderFooter(index + 1)}
+            {props.children}
           </div>
-        ))}
-        <div
-          className={contentClassName}
-          style={{
-            position: "absolute",
-            top: topPx,
-            left: leftPx,
-            width: pageWidthPx - leftPx - rightPx,
-            // Fill at least the first page's content area so a click anywhere on
-            // the page places the caret (the editor stretches via flex).
-            minHeight: pageContentPx,
-            display: "flex",
-            flexDirection: "column",
-            zIndex: 1,
-          }}
-        >
-          {props.children}
         </div>
       </div>
     </div>

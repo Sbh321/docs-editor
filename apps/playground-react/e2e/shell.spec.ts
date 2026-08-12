@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 import { toolbarControl } from "./toolbar";
 
+import type { Page } from "@playwright/test";
+
 /**
  * The shell in a real browser (ROADMAP Phase 8, Milestone 8.6).
  *
@@ -30,6 +32,127 @@ test("the canvas is the scrolling region", async ({ page }) => {
   const canvas = page.locator(".de-shell__canvas");
 
   await expect(canvas).toHaveCSS("overflow-y", "auto");
+});
+
+/** Measures the desk gutter and how the sheet behaves when it stops fitting. */
+async function measureCanvas(page: Page) {
+  return page.evaluate(() => {
+    const desk = document.querySelector(".de-canvas") as HTMLElement;
+    const viewport = document.querySelector(".de-page-viewport") as HTMLElement;
+    const sheet = document.querySelector(".de-page") as HTMLElement;
+    const shellCanvas = document.querySelector(".de-shell__canvas") as HTMLElement;
+
+    const style = getComputedStyle(desk);
+    const gutterStart = Number.parseFloat(style.paddingLeft);
+    const gutterEnd = Number.parseFloat(style.paddingRight);
+    const deskBox = desk.getBoundingClientRect();
+    const pageBox = viewport.getBoundingClientRect();
+
+    return {
+      gutter: gutterStart,
+      // The page's footprint never crosses the desk's content box.
+      withinDesk:
+        pageBox.left >= deskBox.left + gutterStart - 0.5 &&
+        pageBox.right <= deskBox.right - gutterEnd + 0.5,
+      // The sheet keeps its true width — clamping the scrollport, not the paper,
+      // is what stops the document reflowing away from what will print.
+      sheetWidth: Math.round(sheet.getBoundingClientRect().width),
+      // When it does not fit, the scroll belongs to the page, not the canvas.
+      scrollsInsidePage: viewport.scrollWidth > viewport.clientWidth,
+      canvasScrollsX: shellCanvas.scrollWidth > shellCanvas.clientWidth,
+    };
+  });
+}
+
+test("the desk gutter steps down as the canvas narrows", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.goto("/");
+  await page.waitForSelector(".de-page");
+  const wide = await measureCanvas(page);
+
+  await page.setViewportSize({ width: 880, height: 800 });
+  const mid = await measureCanvas(page);
+
+  await page.setViewportSize({ width: 560, height: 800 });
+  const narrow = await measureCanvas(page);
+
+  // On a desk wider than the sheet the gutter is what makes the document read
+  // as a page; on a narrow one it is width the document cannot spare.
+  expect(wide.gutter).toBeGreaterThan(mid.gutter);
+  expect(mid.gutter).toBeGreaterThan(narrow.gutter);
+  expect(narrow.gutter).toBe(0);
+  // Reclaiming the gutter is what keeps the sheet fitting a little longer.
+  expect(wide.scrollsInsidePage).toBe(false);
+  expect(mid.scrollsInsidePage).toBe(false);
+});
+
+test("the gutter answers to the canvas, not the window", async ({ page }) => {
+  // The editor is embeddable, so a viewport query asks the wrong question: a
+  // narrow editor in a wide window is still a narrow editor.
+  await page.setViewportSize({ width: 1400, height: 800 });
+  await page.goto("/");
+  await page.waitForSelector(".de-page");
+
+  const gutterAtFullWidth = (await measureCanvas(page)).gutter;
+
+  // Squeeze the editor without touching the window.
+  await page.evaluate(() => {
+    const root = document.querySelector(".de-root") as HTMLElement;
+    root.style.width = "500px";
+  });
+  const gutterInPane = (await measureCanvas(page)).gutter;
+
+  expect(gutterAtFullWidth).toBeGreaterThan(0);
+  expect(gutterInPane).toBe(0);
+});
+
+test("the page never extends past the desk, and scrolls inside itself", async ({ page }) => {
+  // An A4 sheet is 794px, so below roughly 830px it no longer fits. Rather than
+  // hanging off the side of the canvas, the page's footprint is clamped to the
+  // desk's content box and the sheet scrolls *within* it.
+  for (const width of [1400, 700, 360]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    await page.waitForSelector(".de-page");
+
+    const measured = await measureCanvas(page);
+    // The invariant, at every width: the page stays inside the desk and its
+    // gutter.
+    expect(measured.withinDesk, `page escaped the desk at ${String(width)}px`).toBe(true);
+    // And it never reflows — the paper is the same size whatever the window is.
+    expect(measured.sheetWidth).toBe(794);
+    // Nothing above the page scrolls sideways; the overflow is the page's own.
+    expect(measured.canvasScrollsX).toBe(false);
+  }
+});
+
+test("a sheet wider than the desk scrolls within the page", async ({ page }) => {
+  await page.setViewportSize({ width: 700, height: 800 });
+  await page.goto("/");
+  await page.waitForSelector(".de-page");
+
+  const measured = await measureCanvas(page);
+  expect(measured.scrollsInsidePage).toBe(true);
+
+  // Scrolling inside the page reveals the rest of the sheet without moving the
+  // page's own box, which is what keeps it inside the desk.
+  const moved = await page.evaluate(() => {
+    const viewport = document.querySelector(".de-page-viewport") as HTMLElement;
+    const before = viewport.getBoundingClientRect().left;
+    const sheetBefore = (document.querySelector(".de-page") as HTMLElement).getBoundingClientRect()
+      .left;
+    viewport.scrollLeft = 9999;
+    return {
+      pageBoxMoved: Math.abs(viewport.getBoundingClientRect().left - before) > 1,
+      sheetMoved:
+        Math.abs(
+          (document.querySelector(".de-page") as HTMLElement).getBoundingClientRect().left -
+            sheetBefore,
+        ) > 1,
+    };
+  });
+  expect(moved.sheetMoved).toBe(true);
+  expect(moved.pageBoxMoved).toBe(false);
 });
 
 test("moves toolbar controls into an overflow menu when narrow", async ({ page }) => {

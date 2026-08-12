@@ -458,6 +458,14 @@ Opinions live in the top layer. *Behaviour* does not: every control there
 delegates to a core command, so the batteries change how an editor looks and
 never what it does.
 
+Dropping a layer is the escape hatch of last resort, not the first answer to
+"the defaults don't fit". Within the top layer, an application sizes the editor
+from its own container, states which toolbar controls exist and in what order,
+puts its own content in any region by slot, and drives light/dark — all without
+leaving `<DocsEditor />`. A component that is the wrong party to make a decision
+must not make it: see "What a batteries-included component may not decide" in
+docs/ARCHITECTURE.md.
+
 Planned packages:
 
 - @sbh321/docs-editor-vue

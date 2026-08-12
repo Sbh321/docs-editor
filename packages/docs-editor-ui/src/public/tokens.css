@@ -132,6 +132,16 @@
   --de-toolbar-height: 3rem;
   --de-sidebar-width: 16rem;
 
+  /*
+   * The desk margin around the page. On a canvas wider than the sheet this is
+   * what makes the document read as a page sitting on something; on a narrow
+   * one it is width the document cannot spare, so the shell steps it down as
+   * the canvas narrows (see shell.css). Overriding these fixes the gutter at
+   * whatever you set.
+   */
+  --de-canvas-padding-block: var(--de-space-6);
+  --de-canvas-padding-inline: var(--de-space-4);
+
   /* Motion. Kept short: an editor is a tool, and waiting for a menu is worse
      than a menu that simply appears. */
   --de-duration-fast: 80ms;
@@ -249,6 +259,22 @@
   font-size: var(--de-text-base);
   line-height: var(--de-leading-normal);
   -webkit-font-smoothing: antialiased;
+
+  /*
+   * A layout pass-through. `ThemeProvider` has to render an element — it is
+   * where the token custom properties and the colour-scheme attribute live —
+   * and a plain block there would swallow whatever height the application gave
+   * it, leaving the shell inside nothing to fill. So it takes the size of the
+   * element it was put in and hands it straight down.
+   *
+   * `100%` of a parent with no height resolves to `auto`, so this is inert
+   * rather than harmful in a page that never sets one.
+   */
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .de-root *,

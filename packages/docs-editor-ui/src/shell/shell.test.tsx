@@ -136,6 +136,51 @@ describe("EditorShell", () => {
     // panel or a revision list fits it just as well.
     expect(screen.getByRole("complementary", { name: "Comments" })).toBeInTheDocument();
   });
+
+  it("takes its height from its parent by default", () => {
+    const { container } = render(
+      <EditorShell>
+        <div>Canvas</div>
+      </EditorShell>,
+    );
+
+    // The shell used to hard-code `100dvh`, which overflowed every container
+    // that was not the viewport and could only be undone with `!important`.
+    expect(container.firstElementChild).toHaveClass("de-shell--height-parent");
+  });
+
+  it("fills the viewport or grows with its content when asked", () => {
+    const { container, rerender } = render(
+      <EditorShell height="viewport">
+        <div>Canvas</div>
+      </EditorShell>,
+    );
+    expect(container.firstElementChild).toHaveClass("de-shell--height-viewport");
+
+    rerender(
+      <EditorShell height="auto">
+        <div>Canvas</div>
+      </EditorShell>,
+    );
+    expect(container.firstElementChild).toHaveClass("de-shell--height-auto");
+  });
+
+  it("renders header and footer regions only when given them", () => {
+    const { rerender } = render(
+      <EditorShell>
+        <div>Canvas</div>
+      </EditorShell>,
+    );
+    expect(screen.queryByText("Title bar")).not.toBeInTheDocument();
+
+    rerender(
+      <EditorShell header={<div>Title bar</div>} footer={<div>Legal</div>}>
+        <div>Canvas</div>
+      </EditorShell>,
+    );
+    expect(screen.getByText("Title bar")).toBeInTheDocument();
+    expect(screen.getByText("Legal")).toBeInTheDocument();
+  });
 });
 
 describe("DocsEditor", () => {
@@ -371,5 +416,207 @@ describe("DocsEditor — file menu", () => {
       expect(screen.getByRole("toolbar", { name: "Formatting" })).toBeInTheDocument();
     });
     expect(screen.queryByRole("button", { name: "File" })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * Composition (ROADMAP Phase 9.5).
+ *
+ * Three asks that were all the same ask: an application should be able to shape
+ * the editor's chrome without replacing a region and reimplementing its
+ * contents, and should never have to fight its layout or its theme.
+ */
+describe("DocsEditor — layout", () => {
+  it("takes its height from its parent by default", async () => {
+    const { container } = render(<DocsEditor />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    expect(container.querySelector(".de-shell")).toHaveClass("de-shell--height-parent");
+  });
+
+  it("fills the viewport when told to", async () => {
+    const { container } = render(<DocsEditor height="viewport" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    expect(container.querySelector(".de-shell")).toHaveClass("de-shell--height-viewport");
+  });
+
+  it("puts the application's own class and style on the outer element", async () => {
+    const { container } = render(
+      <DocsEditor className="my-editor" style={{ minHeight: "20rem" }} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    const root = container.querySelector(".de-root");
+    // Merged with ours, so an override never means losing the token wrapper.
+    expect(root).toHaveClass("my-editor");
+    expect(root).toHaveStyle({ minHeight: "20rem" });
+  });
+});
+
+describe("DocsEditor — toolbar composition", () => {
+  it("removes named controls from the default bar", async () => {
+    render(<DocsEditor hiddenToolbarItems={["link", "colorScheme"]} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bold" })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: "Link" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Theme:/ })).not.toBeInTheDocument();
+  });
+
+  it("renders exactly the roster it is given", async () => {
+    render(<DocsEditor toolbarItems={["history", "textFormat"]} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Bold" })).toBeInTheDocument();
+    // The File menu is in the default roster and not in this one.
+    expect(screen.queryByRole("button", { name: "File" })).not.toBeInTheDocument();
+  });
+
+  it("lets an application replace a built-in control and add its own", async () => {
+    render(
+      <DocsEditor
+        toolbarItems={["share", "history"]}
+        slots={{
+          toolbarItem: {
+            share: <button type="button">Share</button>,
+            history: <button type="button">My history</button>,
+          },
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "My history" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  });
+});
+
+describe("DocsEditor — slots", () => {
+  it("renders content in every region it offers", async () => {
+    render(
+      <DocsEditor
+        slots={{
+          header: <div>Header slot</div>,
+          footer: <div>Footer slot</div>,
+          toolbarStart: <button type="button">Start</button>,
+          toolbarEnd: <button type="button">End</button>,
+          sidebarStart: <div>Sidebar top</div>,
+          sidebarEnd: <div>Sidebar bottom</div>,
+          statusBarStart: <div>Saving…</div>,
+          statusBarEnd: <div>Collaborators</div>,
+          aboveDocument: <div>Above</div>,
+          belowDocument: <div>Below</div>,
+          canvasOverlay: <div>Overlay</div>,
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+
+    for (const text of [
+      "Header slot",
+      "Footer slot",
+      "Start",
+      "End",
+      "Sidebar top",
+      "Sidebar bottom",
+      "Saving…",
+      "Collaborators",
+      "Above",
+      "Below",
+      "Overlay",
+    ]) {
+      expect(screen.getByText(text)).toBeInTheDocument();
+    }
+  });
+
+  it("puts canvas slots inside the scrolling region, around the page", async () => {
+    render(
+      <DocsEditor
+        slots={{ aboveDocument: <div data-testid="above">Above</div> }}
+        statusBar={null}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    // Inside the canvas, not bolted on outside it — otherwise it would not
+    // scroll with the document.
+    expect(screen.getByRole("main").contains(screen.getByTestId("above"))).toBe(true);
+  });
+});
+
+describe("DocsEditor — colour scheme", () => {
+  it("starts in the scheme it is given and keeps its own toggle", async () => {
+    const { container } = render(<DocsEditor defaultColorScheme="dark" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    expect(container.querySelector(".de-root")).toHaveAttribute("data-docs-editor-theme", "dark");
+    // Uncontrolled: the editor owns the scheme, so the toolbar control works.
+    expect(screen.getByRole("button", { name: "Theme: dark" })).toBeInTheDocument();
+  });
+
+  it("follows a controlled scheme and reports changes", async () => {
+    const onColorSchemeChange = vi.fn();
+    const { container, rerender } = render(
+      <DocsEditor colorScheme="light" onColorSchemeChange={onColorSchemeChange} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    expect(container.querySelector(".de-root")).toHaveAttribute("data-docs-editor-theme", "light");
+
+    fireEvent.click(screen.getByRole("button", { name: "Theme: light" }));
+    // Reported, not applied locally — a controlled editor must not drift from
+    // the state its owner holds.
+    expect(onColorSchemeChange).toHaveBeenCalledWith("dark");
+    expect(container.querySelector(".de-root")).toHaveAttribute("data-docs-editor-theme", "light");
+
+    rerender(<DocsEditor colorScheme="dark" onColorSchemeChange={onColorSchemeChange} />);
+    expect(container.querySelector(".de-root")).toHaveAttribute("data-docs-editor-theme", "dark");
+  });
+
+  it("removes its toggle when the scheme is controlled with no way to change it", async () => {
+    render(<DocsEditor colorScheme="dark" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    // A control that silently does nothing is worse than no control.
+    expect(screen.queryByRole("button", { name: /^Theme:/ })).not.toBeInTheDocument();
+  });
+
+  it("leaves the surrounding document alone unless asked", async () => {
+    const { unmount } = render(<DocsEditor defaultColorScheme="dark" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("main")).toBeInTheDocument();
+    });
+    // An editor embedded in an application must not restyle the page around it.
+    expect(document.documentElement).not.toHaveAttribute("data-docs-editor-theme");
+    unmount();
+
+    render(<DocsEditor defaultColorScheme="dark" applyColorSchemeToDocument />);
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-docs-editor-theme", "dark");
+    });
   });
 });

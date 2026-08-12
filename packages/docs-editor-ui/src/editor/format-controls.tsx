@@ -122,6 +122,22 @@ export function BlockTypeSelect(): ReactNode {
 }
 
 /**
+ * {@link BlockTypeSelect} in its toolbar group.
+ *
+ * The group is what the toolbar treats as one unit — it is the granule the
+ * overflow row moves and the granule the `"blockType"` item id addresses — so it
+ * lives here beside the control rather than in the toolbar's body, where only
+ * the default bar could reach it.
+ */
+export function BlockTypeControls(): ReactNode {
+  return (
+    <ToolbarGroup label="Paragraph style">
+      <BlockTypeSelect />
+    </ToolbarGroup>
+  );
+}
+
+/**
  * Web-safe families with fallback stacks, so a document renders the same
  * everywhere without shipping a font.
  */
@@ -167,6 +183,15 @@ export function FontFamilySelect(): ReactNode {
         setMark("font_family", { family })(state, dispatch);
       }}
     />
+  );
+}
+
+/** {@link FontFamilySelect} in its toolbar group — the `"fontFamily"` item. */
+export function FontFamilyControls(): ReactNode {
+  return (
+    <ToolbarGroup label="Typeface">
+      <FontFamilySelect />
+    </ToolbarGroup>
   );
 }
 

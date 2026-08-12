@@ -7,7 +7,7 @@
 import { DocsEditor } from "@sbh321/docs-editor";
 import "@sbh321/docs-editor/styles.css";
 
-export default () => <DocsEditor />;
+export default () => <DocsEditor height="viewport" />;
 ```
 
 ## Introduction
@@ -45,9 +45,9 @@ none of the default schema, and no icons — verified by the size budgets in
 See [docs/PROJECT_SPEC.md](./docs/PROJECT_SPEC.md) for the vision and
 [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the engineering design.
 
-**Status:** v0.1.0, published to npm. Phases 0–9 complete: editor core, React
-adapter, rich editing, headless UI, import/export, performance work, media, the
-batteries-included layer, and rich formatting. See
+**Status:** Phases 0–9.5 complete: editor core, React adapter, rich editing,
+headless UI, import/export, performance work, media, the batteries-included
+layer, rich formatting, and embedding & composition. See
 [docs/ROADMAP.md](./docs/ROADMAP.md).
 
 ## Installation
@@ -72,11 +72,12 @@ import { DocsEditor } from "@sbh321/docs-editor";
 import "@sbh321/docs-editor/styles.css";
 
 export default function App() {
-  return <DocsEditor />;
+  return <DocsEditor height="viewport" />;
 }
 ```
 
-The editor fills its container, so give it room — typically:
+**The editor is as big as the element you put it in** and forces no size of its
+own, so give that element a height. For a full-page editor:
 
 ```css
 html,
@@ -86,6 +87,10 @@ body,
   margin: 0;
 }
 ```
+
+Or say so directly — `<DocsEditor height="viewport" />`. Embedding it in a pane,
+a tab or a flex column needs neither: give the container a height and the editor
+fills it, with no CSS overrides of ours.
 
 Building headless instead? Install only the layers you use:
 
@@ -111,12 +116,33 @@ Everything on `<DocsEditor />` is a prop with a working default:
   initialDocument={doc}      // the document to open (read once, on mount)
   onChange={save}            // receives a plain DocumentNode, not editor state
   uploader={myUploader}      // you move the bytes; the editor does the rest
-  toolbarExtras={<Share />}  // your controls, inside the editor's providers
   readOnly={!canEdit}
+  height="parent"            // "viewport" or "auto" when the container has none
   fileMenu={false}           // hide import/export/print
   paginate={false}           // single continuous page
   sidebar={null}             // or your own panel
 />
+```
+
+Every toolbar control has an id, so the bar is configured rather than replaced —
+hidden, reordered, or swapped for your own:
+
+```tsx
+<DocsEditor
+  hiddenToolbarItems={["fontFamily", "colorScheme"]}
+  toolbarItems={["file", "history", "share", "textFormat"]}
+  slots={{
+    toolbarItem: { share: <ShareButton /> },   // your control, anywhere in the bar
+    header: <DocumentTitleBar />,              // and in every other region
+    statusBarStart: <SaveIndicator />,
+  }}
+/>
+```
+
+Light and dark can be driven from your application, so one switch controls both:
+
+```tsx
+<DocsEditor colorScheme={scheme} onColorSchemeChange={setScheme} />
 ```
 
 Retheme by overriding CSS custom properties — no Tailwind, no build step:

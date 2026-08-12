@@ -5,20 +5,62 @@
 
 .de-shell {
   display: grid;
-  /*
-   * `100dvh`, not `100vh`. On mobile browsers `vh` measures the viewport
-   * *without* the collapsing address bar, so a `100vh` shell is taller than the
-   * screen and its status bar sits below the fold — permanently unreachable,
-   * because the bar only collapses on scroll and the shell itself never
-   * scrolls.
-   */
-  height: 100dvh;
-  grid-template-rows: auto 1fr auto;
+  /* header · toolbar · body · status · footer. Rows with nothing in them
+     collapse to zero, so the optional regions cost no space. */
+  grid-template-rows: auto auto 1fr auto auto;
   /* Nothing here scrolls; only the canvas does. */
   overflow: hidden;
+  min-width: 0;
   background: var(--de-background);
   color: var(--de-foreground);
   font-family: var(--de-font-ui);
+}
+
+/*
+ * Height. The shell used to hard-code `100dvh`, which is right for an editor
+ * that *is* the page and wrong everywhere else — inside a flex column, a
+ * resizable pane, a dialog or a tab, a viewport-tall child overflows its
+ * container and the only way out was overriding these rules with `!important`.
+ * A component cannot know the box it was put in, so it no longer guesses.
+ */
+
+/* The default: take the size the application gives us, force none of our own. */
+.de-shell--height-parent {
+  block-size: 100%;
+  min-block-size: 0;
+  /* Also fills a flex parent, which is how most application layouts hand out
+     height. Ignored when the parent is not a flex container. */
+  flex: 1 1 auto;
+}
+
+/*
+ * `100dvh`, not `100vh`. On mobile browsers `vh` measures the viewport
+ * *without* the collapsing address bar, so a `100vh` shell is taller than the
+ * screen and its status bar sits below the fold — permanently unreachable,
+ * because the bar only collapses on scroll and the shell itself never scrolls.
+ */
+.de-shell--height-viewport {
+  block-size: 100dvh;
+}
+
+/* Grows with the document; the surrounding page scrolls rather than the canvas. */
+.de-shell--height-auto {
+  block-size: auto;
+  overflow: visible;
+}
+
+.de-shell--height-auto .de-shell__canvas {
+  overflow: visible;
+}
+
+.de-shell__header {
+  grid-area: header;
+  min-width: 0;
+}
+
+.de-shell__footer {
+  grid-area: footer;
+  min-width: 0;
 }
 
 .de-shell__toolbar {
@@ -50,17 +92,21 @@
 .de-shell--sidebar-left {
   grid-template-columns: auto 1fr;
   grid-template-areas:
+    "header  header"
     "toolbar toolbar"
     "sidebar canvas"
-    "status  status";
+    "status  status"
+    "footer  footer";
 }
 
 .de-shell--sidebar-right {
   grid-template-columns: 1fr auto;
   grid-template-areas:
+    "header  header"
     "toolbar toolbar"
     "canvas  sidebar"
-    "status  status";
+    "status  status"
+    "footer  footer";
 }
 
 .de-shell__sidebar {
@@ -89,6 +135,67 @@
   /* The one scrolling region in the shell. */
   overflow: auto;
   background: var(--de-canvas);
+  /*
+   * The reference for the desk gutter below.
+   *
+   * A **container** query, not a media query, and the distinction is the whole
+   * point now that the editor is embeddable: a 400px-wide editor in a pane on a
+   * 1920px monitor is a narrow editor, and a viewport query calls it a wide one.
+   * The gutter has to answer to the box the document is actually in.
+   *
+   * Safe here specifically because every floating surface — selection toolbar,
+   * slash menu, context menu — renders through a portal, so nothing inside this
+   * element depends on it not being a containing block. Inline-size containment
+   * also guarantees the canvas can never widen the grid track it sits in.
+   */
+  container: docs-editor-canvas / inline-size;
+}
+
+/*
+ * The gutter yields before the document does.
+ *
+ * An A4 sheet is 794px, so on anything under ~830px the desk margin is the
+ * difference between a page that fits and a page that scrolls. Stepping it down
+ * buys back that band; below it the sheet genuinely does not fit and scrolls,
+ * which is what a paged editor should do — a page that reflowed to the window
+ * would no longer be the page that prints.
+ */
+@container docs-editor-canvas (max-width: 900px) {
+  .de-canvas {
+    --de-canvas-padding-block: var(--de-space-4);
+    --de-canvas-padding-inline: var(--de-space-2);
+  }
+}
+
+@container docs-editor-canvas (max-width: 600px) {
+  .de-canvas {
+    --de-canvas-padding-block: var(--de-space-3);
+    /* Every pixel of width matters here, and the desk margin is decoration. */
+    --de-canvas-padding-inline: 0px;
+  }
+}
+
+/*
+ * Application content above and below the document, inside the scrolling canvas
+ * — a title banner, a "last edited" line, an end-of-document call to action.
+ * They wear the canvas background so the desk reads as continuous rather than
+ * as three stacked panels, and centre their content on the same axis the page
+ * is centred on.
+ */
+.de-canvas-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--de-space-4);
+  background: var(--de-canvas);
+}
+
+.de-canvas-slot--above {
+  padding-bottom: 0;
+}
+
+.de-canvas-slot--below {
+  padding-top: 0;
 }
 
 .de-shell__status {
@@ -111,49 +218,46 @@
   .de-shell--sidebar-right {
     grid-template-columns: 1fr;
     grid-template-areas:
+      "header"
       "toolbar"
       "canvas"
-      "status";
+      "status"
+      "footer";
   }
 
   .de-shell__sidebar {
     display: none;
   }
 
+  /*
+   * Placed in the canvas' own grid cell rather than absolutely positioned. The
+   * absolute version had to guess its top edge from `--de-toolbar-height`,
+   * which is wrong the moment a header sits above the toolbar or the bar wraps;
+   * sharing a grid cell is exact by construction. Grid items honour `z-index`
+   * without being positioned, so it stacks over the canvas as it is.
+   */
   .de-shell--sidebar-open .de-shell__sidebar {
     display: block;
-    position: absolute;
-    top: var(--de-toolbar-height);
-    bottom: 0;
+    grid-area: canvas;
     z-index: 30;
+    justify-self: start;
     box-shadow: var(--de-shadow-lg);
   }
 
   /* Overlaid from whichever edge it belongs to, so it does not appear to jump
      sides when the window narrows. */
-  .de-shell--sidebar-left.de-shell--sidebar-open .de-shell__sidebar {
-    left: 0;
-  }
-
   .de-shell--sidebar-right.de-shell--sidebar-open .de-shell__sidebar {
-    right: 0;
-  }
-
-  .de-shell {
-    position: relative;
+    justify-self: end;
   }
 }
 
-@media (max-width: 480px) {
-  .de-shell__canvas {
-    /* Every pixel of width matters on a phone; the desk margin does not. */
-    padding: 0;
-  }
-
-  .de-shell__canvas .de-canvas {
-    padding: var(--de-space-3) 0;
-  }
-}
+/*
+ * The viewport rule this replaced said the same thing at `max-width: 480px`,
+ * and asked the wrong question: it keyed the desk gutter off the *window*, so
+ * an editor in a 400px pane on a large monitor kept a full desktop margin while
+ * a full-screen editor on a tablet lost it. The container query above asks
+ * about the canvas instead, which is the box the document is actually in.
+ */
 
 /* The editor's own content area inside the page. */
 .de-editor {

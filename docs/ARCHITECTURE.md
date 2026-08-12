@@ -272,6 +272,36 @@ Application concerns stay in the application, unchanged: upload transport,
 storage, authentication, persistence, routing. `<DocsEditor />` accepts an
 `onInsertImage` callback and an `onChange`; it does not acquire them.
 
+### What a batteries-included component may not decide (Phase 9.5)
+
+There is a second boundary beside "opinions here, behaviour in the core", and
+Phase 9.5 exists because this layer had crossed it. **Presentation the editor
+owns; presentation of the editor it does not.** Three decisions belong to the
+application by their nature, because they are decisions about the *page the
+editor sits on* rather than about editing:
+
+| Decision | Belongs to the application because |
+| --- | --- |
+| Size | Only the application knows the box — a pane, a tab, a dialog, the viewport |
+| Chrome | Only the application knows which controls its users may have, and what its own belong beside |
+| Colour scheme | An application with a light/dark switch must be able to drive every part of its own UI |
+
+Each of these had a hard-coded answer, and the symptom was identical in all
+three: an integrator reaching past the public API. A `100dvh` shell was undone
+with `!important` on our internal class names; a fixed toolbar was worked around
+by replacing the whole bar and reimplementing it; a seeded colour scheme could
+not be driven at all.
+
+The rule this yields: **a default may be an opinion, but never a decision the
+component is the wrong party to make.** Where the component genuinely cannot
+know the answer, the API is a prop with a sensible default — `height="parent"`,
+a roster of item ids, a controlled `colorScheme` — and never a value baked into
+a stylesheet or a component body.
+
+The test of it is mechanical: if a consumer must write `!important`, fork a
+component, or override a `de-` class to do something reasonable, that is a
+missing prop rather than a styling preference.
+
 ### Enforcement
 
 The layering is verified by **bundle-size budgets in CI**, not by intent. A pair

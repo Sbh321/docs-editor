@@ -2791,6 +2791,146 @@ v0.10.0
 
 ---
 
+# Phase 9.5 — Embedding & Composition
+
+Status:
+
+Complete
+
+Objective:
+
+Make `<DocsEditor />` a component an application can *embed* — sized by its
+container, composed control by control, and themed from outside — rather than
+one an application has to submit to.
+
+## The gap, reported
+
+Phases 8 and 9 optimised for "install and plug in", and the first integration
+outside this repository showed what that had cost. To place the editor inside
+an existing application shell, the integrator wrote:
+
+```css
+.de-shell {
+  display: grid !important;
+  height: 88.5dvh !important;
+  grid-template-rows: auto 1fr auto !important;
+  overflow: hidden !important;
+}
+```
+
+A consumer overriding our internal class names with `!important`, and guessing
+a viewport fraction, is not a styling preference — it is the only exit from a
+component that had decided its own size. Three faults, one theme:
+
+1. **The shell hard-coded `100dvh`.** Correct for an editor that *is* the page;
+   wrong inside a flex column, a pane, a tab or a dialog. `className` landed on
+   the theme wrapper, which could not override the shell inside it, so
+   `!important` was the only lever.
+2. **The toolbar was all-or-nothing.** Wanting the default bar *minus the font
+   picker* meant replacing the whole bar and reimplementing the rest.
+3. **The colour scheme could only be seeded.** `colorScheme` set the starting
+   value and was then owned by the editor, so an application with its own
+   light/dark switch could not drive it.
+
+## Milestone 9.5.1 — Layout is the application's
+
+`EditorShell` and `DocsEditor` take `height: "parent" | "viewport" | "auto"`,
+defaulting to `"parent"`: the editor fills the element it is rendered into and
+forces no size of its own. The theme wrapper became a layout pass-through so
+the size reaches the shell, and `className`/`style` land on it.
+
+## Milestone 9.5.2 — The toolbar is a roster
+
+Every control has a stable id. `toolbarItems` states the roster and its order,
+`hiddenToolbarItems` subtracts from it, and `slots.toolbarItem` supplies
+content per id — replacing a built-in or defining one of the application's own.
+Ids are data, so all three survive being read from configuration or a
+permission check.
+
+## Milestone 9.5.3 — Slots in every region
+
+`DocsEditorSlots` names every place an application can put its own content:
+header, footer, toolbar start/end and per item, sidebar start/end, status bar
+start/end, above/below the document, and over the canvas. Slots render inside
+the editor's providers, so `useEditor()` works in them. `EditorShell` grew
+`header` and `footer` regions to match.
+
+## Milestone 9.5.4 — The colour scheme is controllable
+
+`colorScheme` is now **controlled** and pairs with `onColorSchemeChange`;
+`defaultColorScheme` seeds an uncontrolled editor. `applyColorSchemeToDocument`
+makes writing to `<html>` opt-in and defaults to off — an embedded editor must
+not restyle the page around it.
+
+## Milestone 9.5.5 — A desk gutter that answers to the canvas
+
+Width needed no prop: a block element already inherits its parent's width, which
+is precisely the asymmetry that made height the awkward axis. What it needed was
+for the space *around* the page to stop being fixed.
+
+The gutter between the sheet and the edge of the canvas is now two tokens
+(`--de-canvas-padding-block`, `--de-canvas-padding-inline`) stepped down by a
+**container** query on the canvas. The rule it replaced was a viewport media
+query, which asks the wrong question once the editor is embeddable: a 500px
+editor in a pane on a 1920px monitor kept a full desktop margin, while a
+full-screen editor on a tablet lost it. Reclaiming the gutter also keeps an A4
+sheet fitting a little longer before it has to scroll.
+
+Below roughly 830px the sheet genuinely does not fit, and something has to give.
+There were two honest answers, and the difference between them is where the
+overflow lives:
+
+1. Let the sheet hang outside the canvas and scroll the **canvas**.
+2. Clamp a **scrollport** to the canvas and scroll the sheet inside it.
+
+The first was built and rejected. It let the page cross the gutter it is
+supposed to sit inside — the sheet slid under the sidebar and off the edge of
+the editor — and centring an overflowing item put the document's left margin
+where no scroll offset could reach it, since offsets do not go negative.
+
+So `PageSurface` now renders a scrollport around the sheet: the sheet's own
+width, clamped to `max-width: 100%` of the desk's content box, with
+`overflow-x: auto`. **The page never extends past the canvas or its gutter, and
+the overflow is scrolled within the page's own footprint.** The clamp is inline
+rather than in the stylesheet, following this component's existing rule that
+computed structural sizing must not be themeable away. A `pageViewport` theme
+slot carries the class.
+
+The sheet keeps its true width throughout: it is the scrollport that clamps,
+never the paper. A paged editor whose page reflowed to the window would no
+longer be showing the document that will print.
+
+The accepted cost is that a document-tall scrollport puts its horizontal
+scrollbar at the bottom of the page rather than pinned to the viewport;
+trackpad and shift+wheel reach it anywhere over the page.
+
+## Breaking changes
+
+Three, all in `@sbh321/docs-editor`, all justified by the above and documented
+with migrations in the package README and the changeset:
+
+- `DocsEditor`/`EditorShell` no longer fill the viewport by default —
+  `height="viewport"` restores it.
+- `DocsEditor`'s `colorScheme` is controlled — `defaultColorScheme` is the old
+  behaviour.
+- `EditorToolbar`'s `items` is the roster; insert-menu entries moved to
+  `insertMenuItems`, and `colorSchemeToggle={false}` became
+  `hide={["colorScheme"]}`.
+
+Exit Criteria:
+
+- The editor sizes itself from its container, with no `!important` needed
+- Every toolbar control can be hidden, reordered or replaced by id
+- Every region of the shell accepts application content by slot
+- Light/dark can be driven from outside the editor
+- All packages build, lint, typecheck and test clean; e2e green
+
+Target Version:
+
+v0.2.0
+
+---
+
 # Phase 10 — Version History
 
 Status:

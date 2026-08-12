@@ -3,7 +3,7 @@
 The batteries-included editor — [Docs Editor](../../README.md) assembled and
 styled.
 
-> **Status:** [Phase 8 — Batteries-Included Editor](../../docs/ROADMAP.md#phase-8--batteries-included-editor),
+> **Status:** [Phase 9.5 — Embedding & Composition](../../docs/ROADMAP.md#phase-95--embedding--composition),
 > complete.
 
 ## Why this package exists
@@ -26,10 +26,15 @@ stops fitting:
 import { DocsEditor } from "@sbh321/docs-editor";
 import "@sbh321/docs-editor/styles.css";
 
-export default () => <DocsEditor />;
+export default () => (
+  <div style={{ height: "100dvh" }}>
+    <DocsEditor />
+  </div>
+);
 ```
 
-No props at all is a working editor: the default schema (with tables and their
+**The editor is as big as the element you put it in**, and forces no size of its
+own — see [Sizing](#sizing). Everything else is a default: the default schema (with tables and their
 editing plugin installed), a full toolbar, a **File menu** (import, export as
 Markdown/HTML/JSON/DOCX, print — the heavy formats load lazily on the click
 that needs them), a paginated A4 page, a status bar with word count and zoom, a
@@ -77,36 +82,177 @@ Credentials, endpoints and CORS stay in your `upload` function, which is the
 scope line CLAUDE.md draws: the editor defines the contract and drives the
 lifecycle, and never performs a network request itself.
 
-### The other extension points
+## Sizing
 
-- **`toolbarExtras`** — your controls, appended to the default toolbar *inside*
-  the editor's providers, so `useEditor()` works in them. The playground's
-  import/export panel and print button arrive this way.
-- **`slashMenuItems`** — replaces the `/` palette's default items
-  (`defaultSlashItems()`; everything the default schema can insert or become).
+**The editor takes the size its parent gives it and forces none of its own.**
+Give the parent a height — `height: 100%`, a flex `1fr` track, a fixed size —
+and the editor fills it, with the canvas as the one scrolling region.
+
+```tsx
+// A pane in an application shell. This is the common case.
+<div className="flex h-full min-h-0 flex-col">
+  <DocsEditor className="flex-1" />
+</div>
+```
+
+`height` covers the three shapes an editor is ever asked to take:
+
+| `height` | Behaviour |
+| --- | --- |
+| `"parent"` *(default)* | Fills its container; the canvas scrolls |
+| `"viewport"` | `100dvh` — for an editor that *is* the page |
+| `"auto"` | Grows with the document; the surrounding page scrolls |
+
+`className` and `style` land on the editor's outer element, so your own layout
+classes apply directly. **No `!important` should ever be necessary** — if you
+find yourself overriding a `de-` class, that is a bug worth reporting.
+
+`"viewport"` uses `100dvh`, not `100vh`. On mobile browsers `vh` measures the
+viewport *without* the collapsing address bar, so a `100vh` shell is taller than
+the screen and its status bar sits permanently below the fold — the bar only
+collapses on scroll, and the shell itself never scrolls.
+
+### Width, and the desk gutter
+
+There is no `width` prop and none is needed — a block element already inherits
+its parent's width, which is the asymmetry that made height the awkward axis.
+The editor is exactly as wide as its container.
+
+What *is* responsive is the **desk gutter**, the margin between the page and the
+edge of the canvas. It steps down as the canvas narrows, because on a wide desk
+it is what makes the document read as a page, and on a narrow one it is width
+the document cannot spare:
+
+| Canvas width | `--de-canvas-padding-inline` |
+| --- | --- |
+| Wide | `--de-space-4` (1rem) |
+| ≤ 900px | `--de-space-2` (0.5rem) |
+| ≤ 600px | `0` |
+
+That is a **container** query on the canvas, not a media query on the window —
+which matters now that the editor is embeddable. A 500px editor in a pane on a
+1920px monitor is a narrow editor, and a viewport query would call it a wide one
+and keep the full desktop margin. Override `--de-canvas-padding-inline` or
+`--de-canvas-padding-block` to pin the gutter at a fixed size instead.
+
+Below roughly 830px an A4 sheet no longer fits even with the gutter reclaimed.
+Two things then hold at once, and they are the whole design:
+
+- **The page never extends past the canvas or its gutter.** Its footprint is
+  clamped to the desk's content box, so the sheet never hangs off the side of
+  the editor or slides under the sidebar.
+- **The sheet keeps its true width and scrolls inside that footprint.** The
+  scroll belongs to the page, not the canvas — nothing above the page moves
+  sideways.
+
+The page deliberately does not *reflow* to fit. A paged editor whose page
+changes width is no longer showing the document that will print, which is why
+Word and Google Docs scroll too. What is clamped is the scrollport around the
+sheet, never the paper.
+
+One consequence worth knowing: because the scrollport is as tall as the
+document, its horizontal scrollbar sits at the bottom of the page rather than
+pinned to the viewport. Trackpad gestures and shift+wheel work anywhere over the
+page, which is how this is reached in practice.
+
+The sidebar is a fixed `--de-sidebar-width` (16rem); below 900px it overlays the
+canvas rather than squeezing it, since a 16rem panel beside a page leaves the
+document too narrow to read.
+
+## Composing the toolbar
+
+Every control in the toolbar has a **stable id**, so the bar is configured
+rather than replaced:
+
+```tsx
+// The default bar, minus two controls.
+<DocsEditor hiddenToolbarItems={["fontFamily", "colorScheme"]} />
+
+// Exactly these, in this order.
+<DocsEditor toolbarItems={["file", "history", "textFormat", "lists", "extras"]} />
+
+// Your control in the middle of ours, and ours replaced by yours.
+<DocsEditor
+  toolbarItems={["history", "share", "textFormat"]}
+  slots={{
+    toolbarItem: {
+      share: <ShareButton />,
+      history: <MyUndoRedo />,
+    },
+  }}
+/>
+```
+
+`DEFAULT_TOOLBAR_ITEMS` is the roster, in order:
+
+`file` · `history` · `blockType` · `fontFamily` · `fontSize` · `textFormat` ·
+`color` · `alignment` · `lists` · `indent` · `link` · `clearFormatting` ·
+`insert` · `table` · `media` · `layout` · `upload` · `extras` · `colorScheme`
+
+Four of those have no control of their own and render only what fills them:
+`file`, `layout` and `upload` are supplied by `<DocsEditor />` (given a File
+menu, a sidebar, an uploader), and `extras` is where `toolbarExtras` lands —
+which is what lets you move your own controls to any position in the bar rather
+than only to the end.
+
+Ids are data, so a roster can come from configuration, a feature flag or a
+permission check. `hiddenToolbarItems` composes with `toolbarItems`: hiding
+applies to whatever roster is in play. A repeated id is kept once, at its first
+position.
+
+Wrap several controls in a `ToolbarGroup` when they belong together — a slot's
+content is one overflow unit, and the group is also what names it for a screen
+reader.
+
+## Slots
+
+`slots` names every place an application can put its own content. Each renders
+**inside the editor's providers**, so `useEditor()` and `useColorScheme()` work
+in them.
+
+```tsx
+<DocsEditor
+  slots={{
+    header: <DocumentTitleBar />,
+    statusBarStart: <SaveIndicator />,
+    toolbarEnd: <PresenceAvatars />,
+    belowDocument: <CommentThreadList />,
+  }}
+/>
+```
+
+| Slot | Where it renders |
+| --- | --- |
+| `header` | Above the toolbar, full width |
+| `toolbarStart` / `toolbarEnd` | Before / after every toolbar item |
+| `toolbarItem` | Per toolbar id — see above |
+| `sidebarStart` / `sidebarEnd` | Above / below the sidebar's content |
+| `aboveDocument` / `belowDocument` | Inside the scrolling canvas, around the page |
+| `canvasOverlay` | Over the page (same position as `children`) |
+| `statusBarStart` / `statusBarEnd` | Before the statistics / at the end |
+| `footer` | Below the status bar, full width |
+
+### Replacing a whole region
+
+Slots add; these replace:
+
+- **`toolbar`** — replaces the bar entirely.
 - **`sidebar`** — replaces the layout panel. A custom sidebar renders
   always-open, since the editor cannot know what to call a toggle for content
   it does not recognise; `null` removes the sidebar entirely.
-- **`children`** — rendered over the canvas, for an application's own overlays.
+- **`statusBar`** — replaces the status bar; `null` removes it.
+- **`slashMenuItems`** — replaces the `/` palette's default items
+  (`defaultSlashItems()`; everything the default schema can insert or become).
+- **`insertMenuItems`** — appends to the toolbar's insert menu.
 - **`fileMenu={false}`** — removes the File menu. Importing replaces the open
   document and fires `onChange`; Import is withheld in read-only mode.
 
 ### The shell
 
-`EditorShell` is the frame on its own — a CSS grid filling the viewport with a
-toolbar, an optional sidebar, a scrollable canvas and a status bar. It knows
-nothing about editors, so a comment panel or a revision list fits it as readily
-as an outline.
-
-Filling the screen and the page metaphor are not in conflict: the **shell** owns
-the chrome and fills the window, while the **page** sits centred inside the
-scrollable canvas, still shaped like paper. That is what Word and Google Docs
-do.
-
-It is sized in `100dvh`, not `100vh`. On mobile browsers `vh` measures the
-viewport *without* the collapsing address bar, so a `100vh` shell is taller than
-the screen and its status bar sits permanently below the fold — the bar only
-collapses on scroll, and the shell itself never scrolls.
+`EditorShell` is the frame on its own — a CSS grid of header, toolbar, sidebar
+beside canvas, status bar and footer. It knows nothing about editors, so a
+comment panel or a revision list fits it as readily as an outline, and it takes
+the same `height` prop.
 
 Opinions live here; **behaviour does not**. Every control delegates to a core
 command, exactly as the headless UI layer does.
@@ -150,13 +296,25 @@ explicit choice overrides it **in both directions** — "follow my system" and
 "give me dark even though my OS is light" are both things people want, and
 supporting only the first is the usual bug.
 
-```tsx
-import { ThemeProvider, useColorScheme } from "@sbh321/docs-editor-react";
+**Driving it from your application.** `colorScheme` is controlled; pair it with
+`onColorSchemeChange` so the editor's own toggle keeps working:
 
-<ThemeProvider defaultColorScheme="system" applyToDocument>
-  <MyEditor />
-</ThemeProvider>;
+```tsx
+const [scheme, setScheme] = useState<ColorSchemePreference>("system");
+
+<>
+  <MyAppThemeSwitch value={scheme} onChange={setScheme} />
+  <DocsEditor colorScheme={scheme} onColorSchemeChange={setScheme} />
+</>;
 ```
+
+Pass `colorScheme` **without** a handler and the editor follows it and removes
+its own toggle — a control that silently does nothing is worse than no control.
+Leave `colorScheme` off entirely and the editor owns the scheme; seed it with
+`defaultColorScheme="dark"`.
+
+Inside the editor — in any slot, or in a control you place through
+`slots.toolbarItem` — read and change it with the hook:
 
 ```tsx
 const { scheme, preference, toggle } = useColorScheme();
@@ -166,10 +324,10 @@ const { scheme, preference, toggle } = useColorScheme();
 </button>;
 ```
 
-`applyToDocument` also sets the scheme on `<html>`. Off by default, since a
-provider wrapping part of a page should not restyle the whole document — turn it
-on when the editor *is* the page, so the body background matches and overscroll
-does not reveal a white gap behind a dark editor.
+`applyColorSchemeToDocument` also sets the scheme on `<html>`. **Off by
+default**, since an editor embedded in an application must not restyle the page
+around it — turn it on when the editor *is* the page, so the body background
+matches and overscroll does not reveal a white gap behind a dark editor.
 
 ### Contrast
 
@@ -271,10 +429,14 @@ they are built in rather than left to the caller:
 ## Editor surfaces
 
 `EditorToolbar`, `FindBar`, `StatusBar`, `InsertMenu`, `OverflowRow`,
-`UploadMediaButton`, `ZoomControls`, and the individual controls
-(`BlockTypeSelect`, `FontFamilySelect`, `FontSizeControl`, `ColorControls`,
+`UploadMediaButton`, `ZoomControls`, `ColorSchemeToggle`, and the individual
+controls (`HistoryControls`, `BlockTypeControls`/`BlockTypeSelect`,
+`FontFamilyControls`/`FontFamilySelect`, `FontSizeControl`, `ColorControls`,
 `TextFormatControls`, `AlignmentControls`, `ListControls`, `IndentControls`,
 `LinkButton`, `ClearFormattingButton`, `LayoutButton`).
+
+Each is what a toolbar item id resolves to, so the same components build a bar
+by hand as configure the default one.
 
 Alignment is a **dropdown**, not four toggles: choose-one-of-four is the shape a
 menu expresses in one toolbar slot, and the trigger's glyph mirrors the
@@ -352,6 +514,51 @@ Two things that moved in Phase 8 and are worth knowing about:
   `applyMediaUploadResult` when it finished; forgetting leaves the node at an
   empty `src` forever while the upload reports success. The hook does both, and
   releases the upload afterwards.
+
+## Upgrading from 0.1
+
+Three breaking changes, all in this package. Each is a default that turned out
+to be a decision the *application* should make.
+
+**1. The editor no longer fills the viewport by default.** It fills the element
+you render it into.
+
+```diff
+- <DocsEditor />
++ <DocsEditor height="viewport" />   // an editor that *is* the page
+```
+
+```diff
+- // .de-shell { height: 88.5dvh !important; … }
++ <div style={{ height: "100%" }}><DocsEditor /></div>
+```
+
+If you overrode `de-` classes to place the editor, delete those rules.
+
+**2. `colorScheme` is controlled.** It used to seed the scheme and then hand
+ownership to the editor; it now *is* the scheme.
+
+```diff
+- <DocsEditor colorScheme="dark" />
++ <DocsEditor defaultColorScheme="dark" />
+```
+
+Keep `colorScheme` if you want your application to drive it, and add
+`onColorSchemeChange` so the toolbar's toggle still works.
+
+`applyColorSchemeToDocument` also defaults to `false` now — pass it if you were
+relying on the editor setting the scheme on `<html>`.
+
+**3. `EditorToolbar`'s `items` is the toolbar roster.** Insert-menu entries
+moved to their own prop, and the theme toggle is hidden by id.
+
+```diff
+- <EditorToolbar items={insertEntries} colorSchemeToggle={false} />
++ <EditorToolbar insertMenuItems={insertEntries} hide={["colorScheme"]} />
+```
+
+Both changes are type errors rather than silent behaviour changes.
+`<DocsEditor />`'s props are unaffected — it never exposed either.
 
 ## Scripts
 

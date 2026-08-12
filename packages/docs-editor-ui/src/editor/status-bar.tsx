@@ -7,6 +7,8 @@ import type { ReactNode } from "react";
 
 export interface StatusBarProps {
   readonly className?: string;
+  /** Extra content, rendered before the statistics — a save indicator, a document name. */
+  readonly leading?: ReactNode;
   /** Extra content, rendered at the end — save state, collaborators, a zoom control. */
   readonly children?: ReactNode;
 }
@@ -45,12 +47,13 @@ function countText(doc: DocumentNode): { words: number; characters: number } {
  * at well under a millisecond even at `huge` — an incremental counter would be
  * a cache to invalidate for no measurable gain.
  */
-export function StatusBar({ className, children }: StatusBarProps): ReactNode {
+export function StatusBar({ className, leading, children }: StatusBarProps): ReactNode {
   const state = useEditorState();
   const { words, characters } = countText(state.doc);
 
   return (
     <div className={cn("de-status-bar", className)}>
+      {leading}
       {/* Polite, so a screen reader is not interrupted on every keystroke. */}
       <span aria-live="polite" className="de-status-bar__stat">
         {words} {words === 1 ? "word" : "words"}

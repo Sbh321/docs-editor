@@ -900,7 +900,9 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: var(--de-space-6) var(--de-space-4);
+  /* A token rather than a literal, so the gutter can be re-stated as the canvas
+     narrows without restating the rule — see shell.css. */
+  padding: var(--de-canvas-padding-block) var(--de-canvas-padding-inline);
   background: var(--de-canvas);
   /* Centres the sheet. In paginated mode the page stack is a fixed-width block
      with no margin of its own, so without this the document sits against the
@@ -908,6 +910,30 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+/*
+ * The scrollport around the sheet (ROADMAP Phase 9.5, Milestone 9.5.5).
+ *
+ * Sized inline by `PageSurface` — the sheet's own width, clamped to
+ * `max-width: 100%` of the desk's content box — so the page never extends past
+ * the canvas or its gutter. When the desk is narrower than the paper, the sheet
+ * keeps its true width and scrolls *inside* this box rather than hanging off
+ * the side of the canvas.
+ *
+ * The alternative was to let the sheet overflow the canvas and scroll the
+ * canvas. That put the document's left margin where no scroll offset could
+ * reach it (centring splits overflow across both sides, and offsets do not go
+ * negative), and it let the page cross the gutter it is supposed to sit inside.
+ */
+.de-page-viewport {
+  /*
+   * The clamp itself is inline, set by `PageSurface` — structural sizing is
+   * computed and must not be themeable away, which is the same rule the sheet's
+   * own width follows. All that is left for the stylesheet is to keep the box
+   * from being squeezed on the block axis.
+   */
+  flex: none;
 }
 
 .de-page {
