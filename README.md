@@ -30,12 +30,12 @@ No configuration required — and no lock-in when you outgrow the defaults.
 Three layers, in descending order of control; drop down whenever the one above
 stops fitting, without forking:
 
-| You want                | Use                                            |
-| ----------------------- | ---------------------------------------------- |
-| A working editor        | `@sbh321/docs-editor` → `<DocsEditor />`       |
+| You want | Use |
+| --- | --- |
+| A working editor | `@sbh321/docs-editor` → `<DocsEditor />` |
 | Our chrome, your layout | `@sbh321/docs-editor` → `EditorShell` + surfaces |
-| Your own design system  | `@sbh321/docs-editor-react` primitives         |
-| No framework at all     | `@sbh321/docs-editor-core`                     |
+| Your own design system | `@sbh321/docs-editor-react` primitives |
+| No framework at all | `@sbh321/docs-editor-core` |
 
 **Nobody pays for a layer they do not import.** An application using the
 headless primitives with its own design system downloads none of the styled UI,
@@ -49,6 +49,45 @@ See [docs/PROJECT_SPEC.md](./docs/PROJECT_SPEC.md) for the vision and
 headless UI, import/export, performance work, media, the batteries-included
 layer, rich formatting, and embedding & composition. See
 [docs/ROADMAP.md](./docs/ROADMAP.md).
+
+## Ecosystem
+
+Docs Editor is maintained as a modular open-source ecosystem rather than a
+single package. The packages can be used together for a batteries-included
+editor or independently when an application needs more control over its UI,
+document model, or integrations.
+
+### 🚀 Live Demo
+
+**[Try the Docs Editor →](https://docs-editor-preview.onrender.com)**
+
+The live preview provides a way to explore the editor without installing the
+project locally, including its rich editing, pagination, media, formatting,
+and document import/export capabilities.
+
+### 📦 Published Packages
+
+All packages are published under the `@sbh321` npm scope and are designed to
+work together as part of the Docs Editor ecosystem.
+
+| Package | Description |
+| --- | --- |
+| [`@sbh321/docs-editor`](https://www.npmjs.com/package/@sbh321/docs-editor) | Batteries-included editor with styled UI and `<DocsEditor />` |
+| [`@sbh321/docs-editor-core`](https://www.npmjs.com/package/@sbh321/docs-editor-core) | Framework-agnostic document editing engine |
+| [`@sbh321/docs-editor-react`](https://www.npmjs.com/package/@sbh321/docs-editor-react) | React adapter and headless UI primitives |
+| [`@sbh321/docs-editor-markdown`](https://www.npmjs.com/package/@sbh321/docs-editor-markdown) | Markdown import/export |
+| [`@sbh321/docs-editor-docx`](https://www.npmjs.com/package/@sbh321/docs-editor-docx) | DOCX (Word) import/export |
+| [`@sbh321/docs-editor-icons`](https://www.npmjs.com/package/@sbh321/docs-editor-icons) | Optional default icon set |
+
+### 💻 Repositories
+
+- **[Docs Editor](https://github.com/Sbh321/docs-editor)** — Main repository
+  containing the editor packages, documentation, tests, examples, and tooling.
+- **[Docs Editor Preview](https://github.com/Sbh321/docs-editor-preview)** —
+  Standalone application used for the live demo.
+
+The main repository contains the complete package ecosystem, while the preview
+application provides a separate environment for evaluating the editor.
 
 ## Installation
 
@@ -103,8 +142,8 @@ npm install @sbh321/docs-editor-core
 
 # Optional add-ons
 npm install @sbh321/docs-editor-markdown   # Markdown import/export
-npm install @sbh321/docs-editor-docx      # DOCX (Word) import/export
-npm install @sbh321/docs-editor-icons     # default icon set
+npm install @sbh321/docs-editor-docx       # DOCX (Word) import/export
+npm install @sbh321/docs-editor-icons      # default icon set
 ```
 
 ## Customizing
@@ -117,10 +156,10 @@ Everything on `<DocsEditor />` is a prop with a working default:
   onChange={save}            // receives a plain DocumentNode, not editor state
   uploader={myUploader}      // you move the bytes; the editor does the rest
   readOnly={!canEdit}
-  height="parent"            // "viewport" or "auto" when the container has none
-  fileMenu={false}           // hide import/export/print
-  paginate={false}           // single continuous page
-  sidebar={null}             // or your own panel
+  height="parent"             // "viewport" or "auto" when the container has none
+  fileMenu={false}            // hide import/export/print
+  paginate={false}            // single continuous page
+  sidebar={null}              // or your own panel
 />
 ```
 
@@ -172,18 +211,25 @@ a core command, so nothing is lost on the way down.
 
 ## Packages
 
-| Package                                                     | Description                                                                            |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| [`docs-editor`](./packages/docs-editor-ui)                  | `@sbh321/docs-editor` — batteries included: styled UI and `<DocsEditor />`             |
-| [`docs-editor-core`](./packages/docs-editor-core)           | `@sbh321/docs-editor-core` — framework-agnostic editor engine                          |
-| [`docs-editor-react`](./packages/docs-editor-react)         | `@sbh321/docs-editor-react` — React adapter + headless UI                              |
-| [`docs-editor-icons`](./packages/docs-editor-icons)         | `@sbh321/docs-editor-icons` — optional default icon set                                |
-| [`docs-editor-markdown`](./packages/docs-editor-markdown)   | `@sbh321/docs-editor-markdown` — Markdown import/export                                |
-| [`docs-editor-docx`](./packages/docs-editor-docx)           | `@sbh321/docs-editor-docx` — DOCX (Word) import/export                                 |
-| [`apps/playground-react`](./apps/playground-react)          | Dev app: `<DocsEditor uploader={…} />` and nothing else — the out-of-box promise, executed literally |
-| [`examples/basic-react`](./examples/basic-react)            | The three-line integration (Vite)                                                      |
-| [`examples/basic-next`](./examples/basic-next)              | Next.js App Router integration                                                         |
-| [`tooling/*`](./tooling)                                    | Shared TypeScript and ESLint configuration                                             |
+### Published packages
+
+| Package | Description |
+| --- | --- |
+| [`docs-editor`](./packages/docs-editor-ui) | `@sbh321/docs-editor` — batteries included: styled UI and `<DocsEditor />` |
+| [`docs-editor-core`](./packages/docs-editor-core) | `@sbh321/docs-editor-core` — framework-agnostic editor engine |
+| [`docs-editor-react`](./packages/docs-editor-react) | `@sbh321/docs-editor-react` — React adapter + headless UI |
+| [`docs-editor-icons`](./packages/docs-editor-icons) | `@sbh321/docs-editor-icons` — optional default icon set |
+| [`docs-editor-markdown`](./packages/docs-editor-markdown) | `@sbh321/docs-editor-markdown` — Markdown import/export |
+| [`docs-editor-docx`](./packages/docs-editor-docx) | `@sbh321/docs-editor-docx` — DOCX (Word) import/export |
+
+### Repository structure
+
+| Directory | Purpose |
+| --- | --- |
+| [`apps/playground-react`](./apps/playground-react) | Development app: `<DocsEditor uploader={…} />` and nothing else — the out-of-box promise, executed literally |
+| [`examples/basic-react`](./examples/basic-react) | The three-line integration (Vite) |
+| [`examples/basic-next`](./examples/basic-next) | Next.js App Router integration |
+| [`tooling/*`](./tooling) | Shared TypeScript and ESLint configuration |
 
 Two entry points sit behind `@sbh321/docs-editor-core` so a consumer who does
 not use them pays nothing: `/preset` (the default schema, renderers, parse rules
@@ -191,7 +237,8 @@ and keymap) and `/tables` (interactive table editing).
 
 ## Contributing
 
-Requirements: Node.js 20+, pnpm (via [Corepack](https://nodejs.org/api/corepack.html)).
+Requirements: Node.js 20+, pnpm (via
+[Corepack](https://nodejs.org/api/corepack.html)).
 
 ```bash
 pnpm install
