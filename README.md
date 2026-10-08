@@ -3,6 +3,8 @@
 > A professional, headless, framework-agnostic document editor — with batteries
 > included when you want them.
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Try%20Docs%20Editor-blue)](https://docs-editor-preview.onrender.com)
+
 ```tsx
 import { DocsEditor } from "@sbh321/docs-editor";
 import "@sbh321/docs-editor/styles.css";
